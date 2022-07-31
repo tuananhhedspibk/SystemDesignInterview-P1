@@ -69,3 +69,73 @@ Vấn đề ở đây là chúng ta sẽ lưu `counter` ở đâu. Nếu lưu tr
 High-level architecture của rate limit sẽ trông như sau:
 
 ![Screen Shot 2022-07-31 at 14 05 59](https://user-images.githubusercontent.com/15076665/182011034-852d4c9c-6e81-421a-889a-04e3291efb5e.png)
+
+Client gửi request đến rate limiting middleware, middleware sẽ lấy giá trị counter từ phía redis về. Nếu trong trường hợp:
+- Đạt tới giá trị limit thì request sẽ bị rejected
+- Chưa đạt tới giá trị limit thì req sẽ được chuyển tới API và counter tăng 1
+
+**B3: Thiết kế chi tiết**
+
+**Rate limiting rules** sẽ được lưu trữ tại các config files trên đĩa
+
+**Xử lí khi vượt quá rate limit**: thông thường ta sẽ trả về lỗi 429 (too many requests) cho phía client, nhưng trong một số trường hợp ta có thể lưu các req vượt quá limit lại để xử lí sau đó.
+
+**Rate limiter headers**: các thông tin như client có đang bị "thắt cổ chai" hay không hoặc số lượng req còn lại mà client có thể gửi trước khi bị "thắt cổ chai" sẽ được đưa vào `HTTP response header` dưới các thuộc tính sau:
+- X-Ratelimit-Remaining
+- X-Ratelimit-Limit
+- X-Ratelimit-Retry-After
+
+Khi user gửi quá nhiều req thì:
+- 429 Error Code sẽ được trả về
+- X-Ratelimit-Retry-After
+
+Detail Design sẽ như sau:
+
+![Screen Shot 2022-07-31 at 16 37 05](https://user-images.githubusercontent.com/15076665/182015305-59cac443-730b-4722-83b2-542b132cd6d8.png)
+
+Trong hình trên các rules sẽ được lưu trữ trên đĩa và sẽ được các workers kéo và lưu trữ trên cache khi sử dụng
+
+**Rate limiter trong môi trường phân tán**
+Khi xây dựng rate limiter trên nhiều servers sẽ phát sinh hai vấn đề tiêu biểu sau:
+1. Race condition:
+Có thể hiểu như việc cùng dùng chung một tài nguyên là counter được lưu trong redis sẽ dẫn đến tình trạng không toàn vẹn về dữ liệu.
+
+![Screen Shot 2022-07-31 at 16 46 38](https://user-images.githubusercontent.com/15076665/182015620-4ec9ac51-7c5a-4dfa-8e52-7c4fdef941ff.png)
+
+Với vấn đề này thì `lock` là biện pháp xử lí phổ biến nhất, thế nhưng `lock` sẽ làm chậm đi tốc độ của hệ thống do đó ta có thể sử dụng `Lua script` hoặc `Sorted set của Redis`
+
+- Synchornization issue
+Nếu có nhiều user thì một rate limiter là không đủ và do đó ta cần nhiều rate limiter một lúc. Khi sử dụng nhiều limiter cùng một lúc đòi hỏi ta phải đồng bộ hoá dữ liệu giữa chúng, như ví dụ dưới đây do web tier là stateless thì các client có thể gửi req đến bất kì rate limiter nào.
+
+Nếu không có sự đồng bộ giữa các rate limiter thì ví dụ `rate limiter 1` sẽ không thể biết bất kì thông tin nào về `client 2` dẫn đến việc hoạt động của rate limiter không được như ý muốn
+
+![Screen Shot 2022-07-31 at 16 59 29](https://user-images.githubusercontent.com/15076665/182016000-f6f06fb5-4173-4e94-a532-95bd21255118.png)
+
+Một giải pháp có thể áp dụng đó là sử dụng `sticky session` để cho phép một client có thể gửi req đến cùng một rate limiter → Cách làm này khó có thể mở rộng trong tương lai.
+
+Có một cách khác đó là sử dụng `centralized data stores như Redis`.
+
+![Screen Shot 2022-07-31 at 17 03 55](https://user-images.githubusercontent.com/15076665/182016151-b1d9887a-c4ad-4f5c-bdbd-a60243af53c6.png)
+
+**Performance improvement**
+1. Việc setup các data center sẽ ảnh hưởng đến rate limiter vì độ trễ với các user ở xa data center sẽ lớn.
+2. Đồng bộ hoá dữ liệu với eventual consistency model
+
+**Monitoring**
+Cần phải phân tích dữ liệu để biết rate limiter nào đang hoạt động hiệu quả, về cơ bản ta muốn:
+- Rate limiting algorithm hoạt động hiệu quả
+- Rate liminting rules nào hoạt động hiệu quả
+
+Ví dụ:
+- Nếu rate limiting rule quá nghiêm ngặt dẫn đến nhiều valid request bị bỏ thì ta có thể điều chỉnh rule đi đôi chút.
+- Hoặc nếu rate limiter không hoạt động, dẫn tới tình trạng traffic tới server tăng đột biết thì ta cần thay thế rate limiting algorithm để tránh tình trạng "bùng nổ" traffic như trên
+
+**B4: Tổng kết**
+Bạn có thể bàn luận thêm với interviewer về một vài vấn đề như:
+- Hard vs soft rate limiting: **Hard** nghĩa là số lượng req phải nhỏ hơn rate limiting, **Soft** số lượng req có thể vượt qua giới hạn trong một khoảng thời gian nhất định
+- Triển khai ở layer khác, ở ví dụ trên ta chỉ triển khai ở `Application Layer: layer 7` còn nếu thiết lập rate limiter dựa theo users IP thì ta có thể triển khai ở `Network layer: layer 3`
+
+Ngoài ra ta cũng có thể tránh `rate limited` ở phía client bằng cách:
+- Sử dụng client cache để tránh việc gửi req lên API server thường xuyên
+- Xử lí các exception, error để client có thể phục hồi từ exception
+- Set back off time cho retry logic
