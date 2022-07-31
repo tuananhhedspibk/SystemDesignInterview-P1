@@ -31,3 +31,41 @@ Với cách tiếp cận thông qua middleware như trên ta có thể mô tả 
 <img width="906" alt="Screen Shot 2022-07-31 at 9 41 49" src="https://user-images.githubusercontent.com/15076665/182004901-25e3319b-efde-49d7-a3d9-66588be1489d.png">
 
 Giả sử hệ thống chỉ cho phép client gửi tối đa 2req/s nhưng client lại gửi những 3req/s thì 2req đầu tiên sẽ được truyền tới phía server còn req thứ 3 sẽ bị reject và trả lại `HTTP status code 429` cho phía client.
+
+Các cloud microservice hiện nay đều tích hợp `rate limiting` bên trong `API gateway` và bây giờ chúng ta chỉ cần biết `API Gateway` sẽ được triển khai như một middleware có tích hợp `rate limiting`
+
+Thế nhưng lúc này một câu hỏi được đặt ra đó là nên implement `rate limiting` tại `server side` hay `API Gateway`. Thực tế sẽ không có câu trả lời tuyệt đối cho vấn đề này vì nó phụ thuộc vào nhiều yếu tố như `tech stack` hoặc `engineer resource` và cả `thời gian`.
+- Nếu triển khai bên phía server, bạn có thể kiểm soát hoàn toàn được `rate limiter` từ giải thuật cho đến quá trình vận hành
+- Nếu bạn đang sử dụng cloud microservice với `API Gateway` có tích hợp `rate limiter` thì nên sử dụng luôn limiter của API gateway
+- Việc triển khai rate limiter tốn tương đối thời gian nên nếu thời gian không cho phép thì lựa chọn `limiter của API gateway` hoặc `third-party` hoàn toàn có thể được cân nhắc
+
+**Giải thuật dùng cho rate limiting**
+Có khá nhiều giải thuật có thể cân nhắc như:
+- Token bucket → đây là giải thuật hay được sử dụng nhất
+- Leaking bucket
+- Fixed window counter
+- Sliding window log
+- Sliding window counter
+
+Giải thuật **token bucket** có thể được trình bày như sau:
+
+![Screen Shot 2022-07-31 at 13 39 37](https://user-images.githubusercontent.com/15076665/182010410-72705e48-1db5-4808-bfab-3895ec8ea657.png)
+
+![Screen Shot 2022-07-31 at 13 39 43](https://user-images.githubusercontent.com/15076665/182010413-5a5dac81-9d41-43b8-bac9-55a6c48fd21a.png)
+
+Giải thuật **Leaking bucket** có thể được trình bày như sau:
+
+![Screen Shot 2022-07-31 at 13 44 47](https://user-images.githubusercontent.com/15076665/182010518-7be43710-612c-418e-8699-e6359d8c163f.png)
+
+**High-level architecture**
+Ở level cao, chúng ta cần `counter` để có thể theo dõi số lượng requests gửi từ cùng một user hoặc địa chỉ IP nếu `counter` lớn hơn limit thì request sẽ bị drop.
+
+Vấn đề ở đây là chúng ta sẽ lưu `counter` ở đâu. Nếu lưu trong DB thì sẽ tốn thời gian truy xuất, do đó lưu nó trong bộ nhớ (in-memory cache) là một sự lựa chọn hợp lí về:
+- Thời gian truy xuất (nhanh)
+- Hỗ trợ time-based expiration strategy
+
+→ Và `Redis` chính là một sự lựa chọn hợp lí ở đây (bản thân nó là in-memory store với 2 câu lệnh INCR và EXPIRE)
+
+High-level architecture của rate limit sẽ trông như sau:
+
+![Screen Shot 2022-07-31 at 14 05 59](https://user-images.githubusercontent.com/15076665/182011034-852d4c9c-6e81-421a-889a-04e3291efb5e.png)
