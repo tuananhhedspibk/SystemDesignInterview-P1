@@ -3,6 +3,7 @@
 Trong network system, rate limiter dùng để điều khiển traffic rate gửi từ phía client. Với HTTP thì rate limiter sẽ giới hạn số request gửi từ phía client trong một khoảng thời gian nhất định. Nếu số lượng request vượt quá giới hạn trên thì mọi lời gọi đến hệ thống đều bị từ chối.
 
 Trong thực tế rate limiter sẽ giúp
+
 - Phòng tránh DoS attack.
 - Giảm chi phí vận hành khi giảm được số lượng server xử lí request
 - Giảm tải cho server
@@ -35,12 +36,14 @@ Giả sử hệ thống chỉ cho phép client gửi tối đa 2req/s nhưng cli
 Các cloud microservice hiện nay đều tích hợp `rate limiting` bên trong `API gateway` và bây giờ chúng ta chỉ cần biết `API Gateway` sẽ được triển khai như một middleware có tích hợp `rate limiting`
 
 Thế nhưng lúc này một câu hỏi được đặt ra đó là nên implement `rate limiting` tại `server side` hay `API Gateway`. Thực tế sẽ không có câu trả lời tuyệt đối cho vấn đề này vì nó phụ thuộc vào nhiều yếu tố như `tech stack` hoặc `engineer resource` và cả `thời gian`.
+
 - Nếu triển khai bên phía server, bạn có thể kiểm soát hoàn toàn được `rate limiter` từ giải thuật cho đến quá trình vận hành
 - Nếu bạn đang sử dụng cloud microservice với `API Gateway` có tích hợp `rate limiter` thì nên sử dụng luôn limiter của API gateway
 - Việc triển khai rate limiter tốn tương đối thời gian nên nếu thời gian không cho phép thì lựa chọn `limiter của API gateway` hoặc `third-party` hoàn toàn có thể được cân nhắc
 
 **Giải thuật dùng cho rate limiting**
 Có khá nhiều giải thuật có thể cân nhắc như:
+
 - Token bucket → đây là giải thuật hay được sử dụng nhất
 - Leaking bucket
 - Fixed window counter
@@ -61,6 +64,7 @@ Giải thuật **Leaking bucket** có thể được trình bày như sau:
 Ở level cao, chúng ta cần `counter` để có thể theo dõi số lượng requests gửi từ cùng một user hoặc địa chỉ IP nếu `counter` lớn hơn limit thì request sẽ bị drop.
 
 Vấn đề ở đây là chúng ta sẽ lưu `counter` ở đâu. Nếu lưu trong DB thì sẽ tốn thời gian truy xuất, do đó lưu nó trong bộ nhớ (in-memory cache) là một sự lựa chọn hợp lí về:
+
 - Thời gian truy xuất (nhanh)
 - Hỗ trợ time-based expiration strategy
 
@@ -71,6 +75,7 @@ High-level architecture của rate limit sẽ trông như sau:
 ![Screen Shot 2022-07-31 at 14 05 59](https://user-images.githubusercontent.com/15076665/182011034-852d4c9c-6e81-421a-889a-04e3291efb5e.png)
 
 Client gửi request đến rate limiting middleware, middleware sẽ lấy giá trị counter từ phía redis về. Nếu trong trường hợp:
+
 - Đạt tới giá trị limit thì request sẽ bị rejected
 - Chưa đạt tới giá trị limit thì req sẽ được chuyển tới API và counter tăng 1
 
@@ -81,11 +86,13 @@ Client gửi request đến rate limiting middleware, middleware sẽ lấy giá
 **Xử lí khi vượt quá rate limit**: thông thường ta sẽ trả về lỗi 429 (too many requests) cho phía client, nhưng trong một số trường hợp ta có thể lưu các req vượt quá limit lại để xử lí sau đó.
 
 **Rate limiter headers**: các thông tin như client có đang bị "thắt cổ chai" hay không hoặc số lượng req còn lại mà client có thể gửi trước khi bị "thắt cổ chai" sẽ được đưa vào `HTTP response header` dưới các thuộc tính sau:
+
 - X-Ratelimit-Remaining
 - X-Ratelimit-Limit
 - X-Ratelimit-Retry-After
 
 Khi user gửi quá nhiều req thì:
+
 - 429 Error Code sẽ được trả về
 - X-Ratelimit-Retry-After
 
@@ -97,6 +104,7 @@ Trong hình trên các rules sẽ được lưu trữ trên đĩa và sẽ đư�
 
 **Rate limiter trong môi trường phân tán**
 Khi xây dựng rate limiter trên nhiều servers sẽ phát sinh hai vấn đề tiêu biểu sau:
+
 1. Race condition:
 Có thể hiểu như việc cùng dùng chung một tài nguyên là counter được lưu trong redis sẽ dẫn đến tình trạng không toàn vẹn về dữ liệu.
 
@@ -118,24 +126,29 @@ Có một cách khác đó là sử dụng `centralized data stores như Redis`.
 ![Screen Shot 2022-07-31 at 17 03 55](https://user-images.githubusercontent.com/15076665/182016151-b1d9887a-c4ad-4f5c-bdbd-a60243af53c6.png)
 
 **Performance improvement**
+
 1. Việc setup các data center sẽ ảnh hưởng đến rate limiter vì độ trễ với các user ở xa data center sẽ lớn.
 2. Đồng bộ hoá dữ liệu với eventual consistency model
 
 **Monitoring**
 Cần phải phân tích dữ liệu để biết rate limiter nào đang hoạt động hiệu quả, về cơ bản ta muốn:
+
 - Rate limiting algorithm hoạt động hiệu quả
 - Rate liminting rules nào hoạt động hiệu quả
 
 Ví dụ:
+
 - Nếu rate limiting rule quá nghiêm ngặt dẫn đến nhiều valid request bị bỏ thì ta có thể điều chỉnh rule đi đôi chút.
 - Hoặc nếu rate limiter không hoạt động, dẫn tới tình trạng traffic tới server tăng đột biết thì ta cần thay thế rate limiting algorithm để tránh tình trạng "bùng nổ" traffic như trên
 
 **B4: Tổng kết**
 Bạn có thể bàn luận thêm với interviewer về một vài vấn đề như:
+
 - Hard vs soft rate limiting: **Hard** nghĩa là số lượng req phải nhỏ hơn rate limiting, **Soft** số lượng req có thể vượt qua giới hạn trong một khoảng thời gian nhất định
 - Triển khai ở layer khác, ở ví dụ trên ta chỉ triển khai ở `Application Layer: layer 7` còn nếu thiết lập rate limiter dựa theo users IP thì ta có thể triển khai ở `Network layer: layer 3`
 
 Ngoài ra ta cũng có thể tránh `rate limited` ở phía client bằng cách:
+
 - Sử dụng client cache để tránh việc gửi req lên API server thường xuyên
 - Xử lí các exception, error để client có thể phục hồi từ exception
 - Set back off time cho retry logic
