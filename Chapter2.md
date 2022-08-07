@@ -10,11 +10,11 @@ Những concepts sau ta cần nắm vững:
 - Latency numbers
 - Availability numbers
 
-### Power of two
+## Power of two
 
 Data volume unit luôn là số mũ của 2. Một kí tự ASCII sử dụng 1 byte bộ nhớ (8bits nhớ)
 
-### Latency numbers
+## Latency numbers
 
 - Memory có thể nhanh, nhưng disk sẽ chậm
 - Tránh việc tìm kiếm trên disk nhiều nhất có thể
@@ -22,7 +22,7 @@ Data volume unit luôn là số mũ của 2. Một kí tự ASCII sử dụng 1 
 - Trước khi gửi dữ liệu nên nén dữ liệu nếu có thể
 - Các data centers thường nằm ở các regions khác nhau, việc truyền dữ liệu giữa chúng cũng tốn thời gian
 
-### Availability numbers
+## Availability numbers
 
 High availability hay còn gọi là tính sẵn sàng của hệ thống - thể hiện ở khả năng hệ thống có thể hoạt động liên tục trong một khoảng thời gian dài bao nhiêu.
 
@@ -34,7 +34,7 @@ Service level agreement (SLA): là con số cam kết giữa service provider v�
 
 VD: 99,99% < 99,9999% < 99,9999999%
 
-### Ví dụ về estimate twitter QPS (query per second) and storage requirements
+## Ví dụ về estimate twitter QPS (query per second) and storage requirements
 
 Giả sử:
 
@@ -59,7 +59,7 @@ Size trung bình của 1 tweet
 => Media storage: 150 triệu *2* 10% *1MB = 30TB / ngày
 => 5 năm: 5* 365 * 30 ~ 55PB
 
-**Tips**
+## Tips
 
 - Back-of-the-envelope estimation chủ yếu nói về quá trình. Xử lí vấn đề nhiều khi quan trọng hơn việc đưa ra kết quả.
 - Interviewers có thể sẽ kiểm tra kĩ năng xử lí vấn đề quả bạn

@@ -8,11 +8,11 @@ Trong thực tế rate limiter sẽ giúp
 - Giảm chi phí vận hành khi giảm được số lượng server xử lí request
 - Giảm tải cho server
 
-**B1: Hiểu vấn đề và thiết lập phạm vi thiết kế**
+## B1: Hiểu vấn đề và thiết lập phạm vi thiết kế
 
 Có khá nhiều loại giải thuật cho rate limiting, việc trao đổi với interviewer sẽ giúp bạn phần nào hình dung được loại rate limiter cần phải build.
 
-**B2: Đưa ra high-level design**
+## B2: Đưa ra high-level design
 
 **Nên đặt rate-limiter ở đâu**
 Có 2 nơi để đặt đó là **client side** và **server side**.
@@ -21,15 +21,15 @@ Có 2 nơi để đặt đó là **client side** và **server side**.
 
 - **Server side**: như hình dưới đây
 
-<img width="860" alt="Screen Shot 2022-07-31 at 9 39 59" src="https://user-images.githubusercontent.com/15076665/182004864-a881aa70-ac4d-4487-a7e7-af60055cc116.png">
+![img](https://user-images.githubusercontent.com/15076665/182004864-a881aa70-ac4d-4487-a7e7-af60055cc116.png)
 
 Hoặc cũng có thể đặt nó ở vị trí middleware như dưới đây
 
-<img width="891" alt="Screen Shot 2022-07-31 at 9 40 07" src="https://user-images.githubusercontent.com/15076665/182004865-19f56914-bb1c-45ee-99ab-ddfa114a0626.png">
+![img](https://user-images.githubusercontent.com/15076665/182004865-19f56914-bb1c-45ee-99ab-ddfa114a0626.png)
 
 Với cách tiếp cận thông qua middleware như trên ta có thể mô tả sơ bộ cách hoạt động của rate limiter như sau:
 
-<img width="906" alt="Screen Shot 2022-07-31 at 9 41 49" src="https://user-images.githubusercontent.com/15076665/182004901-25e3319b-efde-49d7-a3d9-66588be1489d.png">
+![img](https://user-images.githubusercontent.com/15076665/182004901-25e3319b-efde-49d7-a3d9-66588be1489d.png)
 
 Giả sử hệ thống chỉ cho phép client gửi tối đa 2req/s nhưng client lại gửi những 3req/s thì 2req đầu tiên sẽ được truyền tới phía server còn req thứ 3 sẽ bị reject và trả lại `HTTP status code 429` cho phía client.
 
@@ -79,7 +79,7 @@ Client gửi request đến rate limiting middleware, middleware sẽ lấy giá
 - Đạt tới giá trị limit thì request sẽ bị rejected
 - Chưa đạt tới giá trị limit thì req sẽ được chuyển tới API và counter tăng 1
 
-**B3: Thiết kế chi tiết**
+## B3: Thiết kế chi tiết
 
 **Rate limiting rules** sẽ được lưu trữ tại các config files trên đĩa
 
@@ -125,12 +125,13 @@ Có một cách khác đó là sử dụng `centralized data stores như Redis`.
 
 ![Screen Shot 2022-07-31 at 17 03 55](https://user-images.githubusercontent.com/15076665/182016151-b1d9887a-c4ad-4f5c-bdbd-a60243af53c6.png)
 
-**Performance improvement**
+### Performance improvement
 
 1. Việc setup các data center sẽ ảnh hưởng đến rate limiter vì độ trễ với các user ở xa data center sẽ lớn.
 2. Đồng bộ hoá dữ liệu với eventual consistency model
 
-**Monitoring**
+### Monitoring
+
 Cần phải phân tích dữ liệu để biết rate limiter nào đang hoạt động hiệu quả, về cơ bản ta muốn:
 
 - Rate limiting algorithm hoạt động hiệu quả
