@@ -25,3 +25,11 @@ Có nhiều lựa chọn để câ nhắc ở đây:
 
 Cách tiếp cận này sử dụng `auto_increment` của database nhưng thay vì `+1` theo thời gian, ID sẽ `+k` với k là số lượng database servers
 
+Như hình minh hoạ bên dưới đây các IDs trong từng database server sẽ được `+2`
+
+![Screen Shot 2022-09-06 at 23 41 40](https://user-images.githubusercontent.com/15076665/188754893-8a476a03-a719-4b52-a8b1-719e6faac248.png)
+
+Tuy nhiên sẽ gặp phải 2 vấn đề sau:
+
+- Khó triển khai khi scale trên nhiều data center
+- Scale không tốt khi tăng hoặc giảm database servers
