@@ -78,9 +78,8 @@ Bản chất ở đây đó là "chia để trị". Ta tiến hành chia nhỏ I
 
 ![Screen Shot 2022-09-07 at 23 07 48](https://user-images.githubusercontent.com/15076665/188899904-8f7ab1ae-db2a-4c40-b492-708ff0154e67.png)
 
-
 ① Bit dấu (1 bit): luôn là 0 (dùng cho tương lai sau này để phân biệt sign và unsign ID)
-② Timestamp (41 bits): timestamp, tính bằng milisecond từ thời điểm hiện tại cho đến `epoch` hoặc `custom epoch`. Giá trị mặc định của `Twitter Snowflake epoch` là 1288834974657 (~ Nov 04, 2010 01:42:54 UTC) 
+② Timestamp (41 bits): timestamp, tính bằng milisecond từ thời điểm hiện tại cho đến `epoch` hoặc `custom epoch`. Giá trị mặc định của `Twitter Snowflake epoch` là 1288834974657 (~ Nov 04, 2010 01:42:54 UTC)
 ③ Datacenter ID (5 bits): cho phép ta có thể có tất cả 2^5 = 32 data centers
 ④ Machine ID (5 bits): cho phép 2^5 = 32 máy trong một data center
 ⑤ Sequence Number (12 bits): increment 1 với mỗi ID được tạo mới. Được reset về 0 mỗi milisecond.
