@@ -106,13 +106,46 @@ Một vài vấn đề của thiết kế trên mà ta có thể kể ngay ra �
 
 ### Phiên bản cải thiện
 
-![Screen Shot 2022-09-11 at 22 45 16](https://user-images.githubusercontent.com/15076665/189530860-75822eff-4364-4f5d-9088-6da89539799e.png)
-
 Ta sẽ cải thiện hệ thống theo hướng sau:
 
 - Đưa cache và DB ra khỏi notification server
 - Thêm server và thiết lập auto horizontal scaling
 - Sử dụng message queue để decouple các components trong hệ thống
 
+![Screen Shot 2022-09-11 at 22 45 16](https://user-images.githubusercontent.com/15076665/189530860-75822eff-4364-4f5d-9088-6da89539799e.png)
 
+Những điểm khác biệt của hệ thống cải thiện so với phiên bản cũ
 
+**Notification server:**
+
+- Cung cấp APIs cho các service gọi, các APIs này nên là internal API đế tránh spam
+- Tiến hành basic validation như verify email, phone number
+- Query data từ cache hoặc DB để build notification
+- Đẩy dữ liệu về notification vào các message queue để tiến hành xử lí song song
+
+Dưới đây là ví dụ về API send email
+
+`POST: https://api.example.com/v/sms/send`
+
+```JSON
+{
+  "to": [
+    {
+      "user_id": 265,
+    },
+  ],
+  "from": {
+    "email": "no-reply@mail.com",
+  },
+  "subject": "Hello",
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "Test",
+    },
+  ],
+}
+```
+
+**Cache**: user info, user device token, notification template đều sẽ được cache
+**DB**: lưu dữ liệu về user, notification, setting, ...
