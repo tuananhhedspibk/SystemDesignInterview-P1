@@ -114,3 +114,42 @@ Các hàm băm này đều cho ra các giá trị băm với độ dài > 7. Cá
 Cách làm này có thể giải quyết được vấn đề trùng lặp shorten URL như ở trên, tuy nhiên việc query vào DB liên tục ở mỗi request sẽ tăng chi phí và giảm hiệu năng. Bloom filter có thể được cân nhắc ở đây như một giải pháp kiểm tra xem short URL đã được lưu hay chưa.
 
 #### Base 62 conversion
+
+Có thể hiểu đây là việc biểu diễn hash value dưới dạng cơ số 62. Với sự đối xứng với cơ số 10 như sau:
+
+- 0-9 (10) ~ 0-9 (62)
+- 10-35 (10) ~ a-z (62)
+- 36-61 (10) ~ A-Z (62)
+
+Ta lấy ví dụ: `11157 (10) = 2 * 62^2 + 55 * 62^1 + 59 * 62^0` nên `11157 (10) = 2TX (62)`
+
+#### So sánh base 62 conversion và hash + collision resolution
+
+`Base 62 conversion` không cho ra short URL với độ dài cố định tuy nhiên ta lại có thể dự đoán short URL tiếp theo được gen ra (bằng cách cộng 1 vào giá trị short URL mới nhất hiện tại).
+
+`hash + collision resolution` cho ra short URL với độ dài cố định nhưng ta không thể dự đoán trước được short URL tiếp theo.
+
+### URL shortening deep dive
+
+Flow có thể được xem như hình dưới đây:
+
+![Screen Shot 2022-09-11 at 11 56 10](https://user-images.githubusercontent.com/15076665/189510380-e0c02698-0ef8-4ab1-a74c-ac7bb5e194ed.png)
+
+Trong flow trên thì bước generate global unique ID là rất quan trọng
+
+### URL redirecting deep dive
+
+Quá trình redirect sẽ được trình bày như trong flow dưới đây
+
+![Screen Shot 2022-09-11 at 12 03 14](https://user-images.githubusercontent.com/15076665/189510614-f6d1ce50-83c9-479a-90e6-b58f203e558c.png)
+
+Điều cần phải chú ý ở đây đó là nếu longURL có sẵn trong cache thì nó sẽ được lấy ra từ cache và trả về cho user.
+
+Trong trường hợp trong cache không có thì web server sẽ request đến DB để lấy ra longURL và nếu ngay cả trong DB cũng không có thì sẽ trả ra kết quả `shortURL không hợp lệ`.
+
+## Bước 4: Tổng kết
+
+Ở bước này ta có thể xem xét đến một vài vấn đề khác như sau:
+
+- Rate limiter: tránh trường hợp users có ý định xấu muốn "phá hoại" hệ thống bằng cách gửi rất nhiều request lên hệ thống. Để giải quyết ta có thể sử dụng IP address filter
+- Khi database phình to, ta có thể cân nhắc việc tích hợp thêm các tool analytic để xem xem link nào được click vào nhiều nhất nhằm phục vụ cho nghiệp vụ bên phía business
