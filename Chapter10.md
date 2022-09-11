@@ -77,3 +77,42 @@ Hình dưới đây sẽ là kết hợp cả 4 loại notification trên
 ![Screen Shot 2022-09-11 at 18 56 48](https://user-images.githubusercontent.com/15076665/189521624-079b6bd7-cd33-48bd-b5c5-d1f4d4a6d6ab.png)
 
 ### Thu thập thông tin liên lạc
+
+Để gửi được notify, sms hay email thì thứ ta cần chính là: device token, phone number, mail address. Những việc này sẽ được thực hiện khi người dùng cài đặt app hoặc sign up vào hệ thống của chúng ta, khi đó thông tin liên tạc của người dùng sẽ được lưu trữ trong DB
+
+![Screen Shot 2022-09-11 at 22 11 33](https://user-images.githubusercontent.com/15076665/189529427-0dbbb27d-dfb6-4e3d-aa5c-89d8b0e01c42.png)
+
+Hình dưới đây sẽ mô tả việc lưu trữ `phone number`, `email`, `device token` trong DB như thế nào. `email` và `phone number` sẽ được lưu trong `bảng user` còn `device token` sẽ được lưu trong bảng `device` vì một user có thể có nhiều device và notify sẽ phải truyền tới mọi devices.
+
+![Screen Shot 2022-09-11 at 22 13 48](https://user-images.githubusercontent.com/15076665/189529601-bfcc540c-4377-498b-8b11-01882cfc471b.png)
+
+### Flow gửi/nhận notification
+
+![Screen Shot 2022-09-11 at 22 17 03](https://user-images.githubusercontent.com/15076665/189529698-f4664271-49dd-40ca-b195-9bb2db46e5a9.png)
+
+**Service 1 → N** có thể là micro-services hoặc cron-jobs, ... bất kì thứ gì có thể trigger việc gửi notify đến user
+
+**Notification system** là trung tâm của hệ thống, cung cấp API cho **Service 1 → N** sử dụng, build payload cho third party service. Có thể bắt đầu đơn giản bằng 1 server duy nhất
+
+**Third-party services** có trách nhiệm chuyển notification đến cho người dùng, hệ thống của chúng ta nên được thiết kế để có tính mở rộng cao. Tính mở rộng cao ở đây được hiểu theo hướng có thể thay thế service này bằng một service khác dễ dàng mà không làm ảnh hưởng đến toàn bộ hệ thống. Nguyên nhân có thể là service A không hoạt động ở một region nào đó chẳng hạn (FCM không hoạt động ở Trung Quốc)
+
+**iOS, Android, SMS, Email** user nhận notification trên device của họ
+
+Một vài vấn đề của thiết kế trên mà ta có thể kể ngay ra ở đây đó là:
+
+- Single Point Of Failure (SPOF): do chỉ có 1 server duy nhất
+- Khó để scale do hệ thống hiện đang hoạt động chỉ với 1 server, việc scale sẽ vấp phải các vấn đề như cache, DB, ...
+- Bottle neck: do việc gửi payload đến Third-party service có thể sẽ mất thời gian để nhận về response
+
+### Phiên bản cải thiện
+
+![Screen Shot 2022-09-11 at 22 45 16](https://user-images.githubusercontent.com/15076665/189530860-75822eff-4364-4f5d-9088-6da89539799e.png)
+
+Ta sẽ cải thiện hệ thống theo hướng sau:
+
+- Đưa cache và DB ra khỏi notification server
+- Thêm server và thiết lập auto horizontal scaling
+- Sử dụng message queue để decouple các components trong hệ thống
+
+
+
