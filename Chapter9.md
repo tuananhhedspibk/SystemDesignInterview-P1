@@ -156,3 +156,121 @@ Component này sẽ giúp giải quyết hai vấn đề nêu trên. Đây là m
 - Freshness
 
 ### Politeness
+
+Việc gửi quá nhiều request đến host có thể sẽ dẫn đến tình trạng bị block do host sẽ hiểu đó là D-DoS Attack. Để tránh điều này ta sẽ sử dụng một mô hình như sau:
+
+![Screen Shot 2022-09-11 at 16 00 15](https://user-images.githubusercontent.com/15076665/189516087-888c80e2-ea0c-4166-860d-3a663723921b.png)
+
+Ở đây:
+
+- **Mapping Table** sẽ map host tương ứng với từng queue. Từng queue này sẽ chứa các URLs từ cùng một host và sẽ được 1 worker thread xử lí
+- **Query Router** sẽ đảm bảo các queue b1, b2 chỉ chứa các URLs từ cùng 1 host
+- **Queue Selector** sẽ chọn ra queue tương ứng với từng worker thread
+- **Worker thread** sẽ tiến hành download các pages từ cùng host. Delay sẽ được thêm giữa các lần download để tránh tăng tải cho host cũng như tránh được tình trạng bị nghi là D-DoS Attack
+
+### Priority
+
+Ta lấy ví dụ cùng là page của Apple nhưng home page của Apple sẽ được truy cập nhiều hơn, do đó mức độ ưu tiên của việc crawl trang này sẽ quan trọng hơn các trang khác.
+
+Việc xác định mức độ thường xuyên được truy cập của page có thêm được tham khảo từ `PageRank`.
+
+Ở đây `Prioritizer` sẽ xử lí URL prioritization
+
+![Screen Shot 2022-09-11 at 16 12 37](https://user-images.githubusercontent.com/15076665/189516482-05a11132-8ebd-4151-a2ee-27dbf3cd0aaa.png)
+
+Sau khi nhận input URLs **prioritizer** sẽ tính priority của các URLs, sau đó đưa vào các queue f1, f2, ..., fn. Mỗi queue sẽ được đánh mức độ ưu tiên, queue nào có priority cao hơn thì URLs trong đó sẽ được chọn ra với xác suất cao hơn bởi `queue selector`
+
+Ghép toàn bộ các components lại ta sẽ có flow như sau:
+
+![Screen Shot 2022-09-11 at 16 16 18](https://user-images.githubusercontent.com/15076665/189516596-000da1de-9002-4cff-b18a-80bbaae93e40.png)
+
+Ở đây ta có 2 nhóm queues:
+
+- Front queue: quản lí mức độ ưu tiên
+- Back queue: quản lí politeness
+
+### Freshness
+
+Các web pages thường xuyên được cập nhật, thêm mới, xoá bỏ. Do đó, định kì ta phải recrawl lại các web pages, thế nhưng việc re-crawl lại toàn bộ các pages sẽ **tốn thời gian** và **lãng phí tài nguyên**. Vì thế ta sẽ sử dụng 2 chiến lược như sau cho việc `re-crawl`:
+
+- Re-crawl dựa theo web page update history
+- Ưu tiên re-crawl những page quan trọng và được truy cập thường xuyên
+
+### Storage cho URL Frontier
+
+Trong thực tế số lượng URLs mà Frontier phải xử lí có thể sẽ lên tới cả trăm triệu nên việc dồn toàn bộ chúng vào memory là điều không thể hoặc sẽ khó để mở rộng hệ thống.
+
+Còn nếu đưa toàn bộ dữ liệu về URLs vào disk thì sẽ ảnh hưởng đến tốc độ truy vấn từ đó dẫn tới bottle-neck.
+
+Chúng ta sẽ sử dụng cách tiếp cận hybrid (sử dụng cả disk và memory). URLs sẽ được lưu trữ chủ yếu trên disk (coi như đã giải quyết được vấn đề về bộ nhớ). Song song với đó chúng ta cũng sẻ sử dụng một buffer trong memory, buffer này cũng sẽ lưu trữ các URLs và sẽ được định kì ghi vào disk
+
+### HTML downloader
+
+Download nội dung trang từ internet bằng HTTP protocol
+
+### Robots.txt
+
+Là một chuẩn dùng cho mục đích tương tác giữa crawler và page. Nó sẽ đưa ra các rules buộc crawler phải tuân thủ.
+
+Trước khi bắt đầu crawl page thì crawler cần đọc rõ nội dung của `Robots.txt`
+Để tránh download lại `Robots.txt` nhiều lần ta sẽ tiến hành cache nó.
+
+Dưới đây là ví dụ về `Robots.txt` của Amazon dùng để tương tác với Google bot.
+
+```txt
+User-agent: Googlebot
+Disallow: /creatorhub/*
+Disallow: /rss/people/*/reviews
+```
+
+### Performance Optimization
+
+**1. Disitributed crawl:**
+
+Quá trình crawl sẽ được triển khai ở nhiều servers. Mỗi server sẽ gồm nhiều threads. URLs sẽ được phân mảnh và chuyển đến cho các servers.
+
+![Screen Shot 2022-09-11 at 16 39 55](https://user-images.githubusercontent.com/15076665/189517373-32337f58-5bb8-42f6-b2c1-671273f92366.png)
+
+**2.Cache DNS Resolver:**
+
+Việc gửi req và chờ response từ DNS Resolver sẽ tốn `10ms - 200ms`. Khi một req được đẩy lên thì các thread khác sẽ bị block cho đến khi req kia hoàn thành thì thôi.
+
+Để giải quyết vấn đề này ta sẽ tiến hành cache `Domain - IP` và update chúng thường xuyên bằng cron jobs.
+
+**3. Locality:**
+
+Nếu được, hãy tiến hành triển khai các crawler server gần với server của host để tăng tốc độ download.
+
+**4. Short timeout:**
+
+Một số web response khá chậm hoặc không response toàn bộ. Maximal wait time nên được thiết lập để tránh tình trạng crawler phải chờ quá lâu. Nếu host response quá chậm so với pre-defined wait time thì job đó sẽ bị huỷ và sẽ tiến hành crawl page khác.
+
+### Robustness
+
+Để giải quyết vấn đề này ta có thể áp dụng những cách tiếp cận như sau:
+
+- Consisten hashing để phân bổ load giữa các downloader
+- Lưu các crawl states và data. Nếu crawl bị failed thì ta hoàn toàn có thể restart lại một cách dễ dàng
+- Exception handling: với các hệ thống lớn thì việc xử lí lỗi cũng giúp cho hệ thống không bị crash
+- Data validation để tránh xảy ra lỗi
+
+### Extensiblity
+
+Mọi hệ thống nên và cần được thiết kế để có khả năng mở rộng cao. Với crawler ta cần thiết kế để hệ thống có thể xử lí được với nhiều loại content type khác nhau như dưới đây
+
+![Screen Shot 2022-09-11 at 17 32 56](https://user-images.githubusercontent.com/15076665/189518768-f085f053-21f6-42b8-8387-e14d9f7a0f7a.png)
+
+- PNG downloader module để download ảnh PNG
+- Web monitor module để kiểm tra việc vi phạm bản quyền
+
+### Tìm và tránh các vấn đề về nội dung
+
+Với các nội dung trùng lặp ta có thể so sánh các hash value của nội dung
+
+Để tránh **spider-trap** (các URL dạng www.web.com/foo/bar/foo/bar/foo/bar/foo/bar sẽ làm cho crawler gặp phải tình trạng infinite loop) ta có thể setup độ dài tối đa cho URL. Tuy nhiên những trang kiểu này thường sẽ không được truy cập nhiều nên ta có thể tránh nó bằng cách tự mình xác thực.
+
+Với **data noise** như thông tin quảng cáo, code-snippets, ... thì những loại thông tin này cần được loại bỏ.
+
+## Bước 4: Tổng kết
+
+Với các Server side rendering ta sẽ tiến hành rendering trước khi download
