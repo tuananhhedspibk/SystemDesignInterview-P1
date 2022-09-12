@@ -185,4 +185,42 @@ Khi notification đến, ta sẽ kiểm tra xem notification đã được đọ
 
 ### Additional Components
 
+#### Notification template
 
+Với những hệ thống lớn cần gửi cả triệu notifications mỗi ngày thì việc lặp lại quá trình building một notification là không cần thiết do các notifications này có thể có format hoàn toànn giống nhau.
+
+Lúc này ta nên tạo và sử dụng các `notification template` để tránh việc build lại cùng một notification format. Các nội dung, link, ... sẽ được custom thông qua các parameters.
+
+Hơn thế nữa việc sử dụng template cũng giúp giảm thiểu đi `margin error`
+
+VD về template:
+
+```ruby
+Hi @username
+
+Here is your charge @payment
+```
+
+#### Notification setting
+
+Việc nhận quá nhiều notification có thể khiến user mệt mỏi. Hệ thống nên cho phép user có quyền nhận hoặc không nhận notification. Các thông tin này sẽ được lưu trong `notification setting table` như ví dụ dưới đây
+
+```SQL
+user_id bigInt
+channel varchar -- push notification, email or SMS
+opt_in boolean -- opt-in to receive notification
+```
+
+Trước khi gửi notification cho user ta sẽ kiểm tra xem `opt_in` có bằng `true` hay không
+
+#### Rate limiting
+
+Để tránh "làm phiền" người dùng ta có thể thiết lập số lượng notifications mà user sẽ nhận vào mỗi ngày. Trong trường hợp user nhận quá nhiều notification thì chức năng này có thể bị user "cho off"
+
+#### Retry mechanism
+
+Nếu third-party service gặp sự cố dẫn đến việc không gửi được notification thì notification sẽ được đưa vào message queue để tiến hành gửi lại sau đó. Nếu vấn đề không được giải quyết thì alert sẽ được đưa ra ở phía người dùng
+
+#### Security in push notification
+
+Với iOS và android app thì `appKey` và `appSecret` được sử dụng để bảo đảm tính bảo mật của push notification APIs. Chỉ một số những services nhất định (được authen và verify) mới có thể gọi tới push notification APIs
