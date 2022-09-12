@@ -149,3 +149,40 @@ Dưới đây là ví dụ về API send email
 
 **Cache**: user info, user device token, notification template đều sẽ được cache
 **DB**: lưu dữ liệu về user, notification, setting, ...
+
+**Message queue** hoạt động với mục đích làm giảm sự phụ thuộc lẫn nhau giữa các components. Khi một số lượng lớn notification được chuyển đi, message queue sẽ hoạt động như một buffer. Mỗi notification type sẽ tương ứng với một message queue
+
+**Workers** là các server sẽ pull notification từ **message queue** sau đó truyền đến cho third-party services để third-party services truyền đến người nhận
+
+Ghép chúng lại ta sẽ có flow như sau:
+
+1. Các services sẽ call API của notification server để gửi notification
+2. Notification server sẽ fetch meta-data như user infor, device token từ cache hoặc DB
+3. Build notification event, payload và gửi chúng tới các message queue
+4. Worker sẽ pull các events đó về và gửi đến third-party service tương ứng
+5. Third-party service sẽ gửi notification đến user
+
+## Bước 3: Design deep dive
+
+Trong phần này chúng ta sẽ đi sâu vào những phần dưới đây:
+
+- Reliablity
+- Các components khác, cơ chế retry, notification template, notification setting, event tracking, security in push notification
+- Update design
+
+### Reliablity
+
+Một trong những yêu cầu cơ bản nhất đối với một push notification system đó là việc **không được phép mất data**. Notification có thể bị delay hoặc không theo thứ tự mong muốn nhưng dữ liệu không được phép mất.
+
+Để đảm bảo yêu cầu trên ta cần lưu notification data trong DB (notification log database) để phục vụ cho cơ chế retry
+
+![Screen Shot 2022-09-12 at 23 09 45](https://user-images.githubusercontent.com/15076665/189675684-5badf33c-226a-4778-a771-135108c83ad7.png)
+
+**Liệu người nhận chỉ nhận được duy nhất một notification**
+Câu trả lời là không. Trên thực tế sẽ có nhiều hơn một notifications đến với user. Tuy nhiên để tránh tình trạng "duplicate notification" làm ảnh hưởng đến UX ta sẽ sử dụng một cơ chế "ngăn chặn duplicate". Có thể giải thích đơn giản như ở dưới đây:
+
+Khi notification đến, ta sẽ kiểm tra xem notification đã được đọc hay chưa dựa vào `event ID`. Nếu đã đọc thì notification sẽ bị bỏ đi còn không thì sẽ gửi tới người dùng
+
+### Additional Components
+
+
