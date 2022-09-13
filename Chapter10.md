@@ -224,3 +224,41 @@ Nếu third-party service gặp sự cố dẫn đến việc không gửi đư�
 #### Security in push notification
 
 Với iOS và android app thì `appKey` và `appSecret` được sử dụng để bảo đảm tính bảo mật của push notification APIs. Chỉ một số những services nhất định (được authen và verify) mới có thể gọi tới push notification APIs
+
+#### Monitor queued notifications
+
+Một trong những yếu tố cần monitor đó chính là số lượng notifications trong queue, nếu số lượng này lớn sẽ làm cho tốc độ gửi notification đến user bị chậm đi. Cách giải quyết đó là tăng cường các workers
+
+#### Event tracking
+
+Các chỉ số như **click rate**, **open rate**, ... cần được theo dõi để có thể phân tích được hành vi của người dùng. `Analytic service` sẽ triển khai việc theo dõi các chỉ số kể trên.
+
+Việc tích hợp `notification system` với `analytic service` thường xuyên được thực hiện.
+
+Hình dưới đây cho thấy các events sẽ được tracking cho mục đích phân tích hành vi của người dùng.
+
+![Screen Shot 2022-09-13 at 22 49 51](https://user-images.githubusercontent.com/15076665/189918985-87a1f732-aaa4-4b1f-b85d-6507d06e94a4.png)
+
+#### Updated design
+
+Đưa mọi thành phần ở trên vào cùng nhau, ta sẽ thu được thiết kế như dưới đây:
+
+![Screen Shot 2022-09-13 at 22 51 21](https://user-images.githubusercontent.com/15076665/189919317-afa96108-7e21-472f-8a80-830411cb268e.png)
+
+
+- Notification server được trang bị thêm 2 thành phần quan trọng khác đó là `authentication` & `rate limit`
+- Cơ chế retry cho phép ta đưa các notification gặp lỗi khi tiến hành pushing vào message queued để tái xử lí (push) sau đó - việc retry này sẽ được lặp đi lặp lại một số lần nhất định được định nghĩa trước đó
+- Notification template giúp giảm thời gian tạo notification payload
+- Monitoring và tracking systems được thêm vào nhằm 2 mục đích `health check` và `cải thiện trong tương lai`
+
+## Bước 4: Tổng kết
+
+Notification là phần không thể thiếu của một hệ thống (VD: thông báo phim mới trên Netflix hoặc khoản thanh toán tiếp theo của bạn trên trang EC)
+
+Trong chương này chúng ta đã đào sâu vào được những yếu tố dưới đây:
+
+- **Reliability**: cơ chế retry giúp giảm đi failure rate
+- **Security**: `AppClient` và `AppSecret` được sử dụng để xác nhận xem service có quyền gửi notification hay không
+- **Tracking và monitoring**: được triển khai ở nhiều stages trong flow để thu thập các số liệu thống kê
+- **Respect user-setting**: user có thể từ chối nhận notification, chúng ta sẽ kiểm tra xem user có đồng ý nhận notification hay không trước khi gửi notification
+- **Rate limiting**: user sẽ thấy thích thú với việc số lượng notification mà user nhận được trong một khoảng thời gian nhất định không quá nhiều
