@@ -245,7 +245,6 @@ Hình dưới đây cho thấy các events sẽ được tracking cho mục đí
 
 ![Screen Shot 2022-09-13 at 22 51 21](https://user-images.githubusercontent.com/15076665/189919317-afa96108-7e21-472f-8a80-830411cb268e.png)
 
-
 - Notification server được trang bị thêm 2 thành phần quan trọng khác đó là `authentication` & `rate limit`
 - Cơ chế retry cho phép ta đưa các notification gặp lỗi khi tiến hành pushing vào message queued để tái xử lí (push) sau đó - việc retry này sẽ được lặp đi lặp lại một số lần nhất định được định nghĩa trước đó
 - Notification template giúp giảm thời gian tạo notification payload
