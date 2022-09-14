@@ -108,7 +108,7 @@ Chúng ta sẽ sử dụng cách làm hybrid. Tức là
 ![Screen Shot 2022-09-14 at 23 16 33](https://user-images.githubusercontent.com/15076665/190179415-bb7b4e5c-a4ed-41a7-b19d-ff38a5950a06.png)
 
 1. Fetch user id từ Graph DB, Graph DB là sự lựa chọn phù hợp cho việc lưu trữ các mối quan hệ `following/ follower`, `recommendation user`
-2. Fetch user info dựa theo `user id` và `user setting` được lưu trong cache / DB
+2. Fetch user info dựa theo `user id` và `user setting` được lưu trong cache / DB. Hệ thống sẽ tiến hành filter các users sẽ nhận được post vì có những user đã block bạn hoặc bạn chỉ muốn một số users nhất định xem post mà thôi
 3. Đưa friend list và post ID vào `message queue`
 4. Các worker sẽ pull dữ liệu `<post_id, user_id>` từ `message queue` về. Việc lưu trữ dưới format `<post_id, user_id>` (hash table) sẽ giúp giảm đi lượng thông tin cần lưu trữ (tránh tốn tài nguyên bộ nhớ). Ngoài ra việc duyệt qua hash table chỉ gồm `post id` và `user id` cũng sẽ giúp hiệu ứng load posts phía client "mượt" hơn. Hơn nữa user chỉ quan tâm đến các post gần đây nên việc lưu trữ theo format nêu trên cũng giúp giảm tỉ lệ "cache miss"
 5. Lưu `<post_id, user_id>` vào cache
@@ -116,3 +116,24 @@ Chúng ta sẽ sử dụng cách làm hybrid. Tức là
 #### Newsfeed retrieval deep dive
 
 ![Screen Shot 2022-09-14 at 23 23 31](https://user-images.githubusercontent.com/15076665/190181417-d333da01-4246-4bf3-bfb2-504eeeacbe8b.png)
+
+Các static content như `images`, `videos` sẽ được lưu trữ ở CDN để tăng tốc độ truy vấn
+
+Ở bước 4: news feed service sẽ lấy post ID list từ news feed cache
+Ở bước 5: do một post không chỉ có đơn thuần ID mà còn có `user name`, `post content`, ... vì thế nên sẽ lấy các thông tin này ra từ `user cache` hoặc `user DB` cũng như `post cache` hoặc `post DB`
+
+### Cache Architecture
+
+Cache sẽ được chia thành 5 tầng như sau:
+
+![Screen Shot 2022-09-15 at 8 28 26](https://user-images.githubusercontent.com/15076665/190280297-fac4ea18-1180-46f8-8c6b-0bbbf9ae0889.png)
+
+- **News feed**: lưu trữ ID của news
+- **Content**: lưu trữ post data, các post phổ biến sẽ được lưu trong `hot cache`
+- **Social Graph**: lưu trữ dữ liệu về mối quan hệ giữa các user
+- **Action**: lưu trữ thông tin về các hành động của user đối với post như `like`, `comment`, ...
+- **Counters**: lưu counter cho likes, followers, ...
+
+## Bước 4: Tổng kết
+
+> Không có một thiết kế hoàn hảo nào cả. Tuỳ thuộc vào yêu cầu đặc trưng của từng hệ thống mà đưa ra thiết kế sao cho phù hợp nhất
