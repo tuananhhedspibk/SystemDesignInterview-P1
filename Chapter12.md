@@ -53,3 +53,11 @@ Như mô tả bên dưới, với `polling` thì client sẽ liên tục "hỏi"
 
 ### Long polling
 
+Do `polling` hoạt động không hiệu quả nên chúng ta sẽ xem xét đến `long polling` như dưới đây
+
+![Screen Shot 2022-09-16 at 8 14 56] (https://user-images.githubusercontent.com/15076665/190525180-b8ba06b5-28e3-40f6-a230-58e2b129de6c.png)
+
+Trong `long polling`, client sẽ giữ connection tồn tại cho đến khi nhận được message hoặc đạt tới ngưỡng timeout.
+
+Khi client nhận được message, nó sẽ gửi req đến server để tiếp tục quá trình "long polling" như trên
+
