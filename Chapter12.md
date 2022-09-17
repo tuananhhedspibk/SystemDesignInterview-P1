@@ -55,9 +55,141 @@ Như mô tả bên dưới, với `polling` thì client sẽ liên tục "hỏi"
 
 Do `polling` hoạt động không hiệu quả nên chúng ta sẽ xem xét đến `long polling` như dưới đây
 
-![Screen Shot 2022-09-16 at 8 14 56] (https://user-images.githubusercontent.com/15076665/190525180-b8ba06b5-28e3-40f6-a230-58e2b129de6c.png)
+![Screen Shot 2022-09-16 at 8 14 56](https://user-images.githubusercontent.com/15076665/190525180-b8ba06b5-28e3-40f6-a230-58e2b129de6c.png)
 
 Trong `long polling`, client sẽ giữ connection tồn tại cho đến khi nhận được message hoặc đạt tới ngưỡng timeout.
 
-Khi client nhận được message, nó sẽ gửi req đến server để tiếp tục quá trình "long polling" như trên
+Khi client nhận được message, nó sẽ gửi req đến server để tiếp tục quá trình "long polling" như trên. Tuy nhiên bản thân `long polling` cũng có một vài nhược điểm như sau:
 
+- Sender và receiver có thể không kết nối tới cùng một server. Nguyên nhân: HTTP là stateless (server sẽ không hề biết về trạng thái của client). Nếu sử dụng `round robin` cho `load balancer` thì server nhận được message **chưa chắc** đã kết nối với client cần nhận message
+- Server không thể báo cho client rằng kết nối bị ngắt
+- Trong trường hợp user không chat quá nhiều thì req vẫn được gửi đi liên tục khi timeout
+
+### WebSocket
+
+Đây là giải pháp phổ biến để server cập nhật các sự thay đổi cho client
+
+![Screen Shot 2022-09-17 at 10 46 43](https://user-images.githubusercontent.com/15076665/190835781-49d79114-6b27-4df5-8d27-4b0b74d945f2.png)
+
+WebSocket là một kết nối hai chiều (bi-directional) được khởi tạo bởi phía client. Khởi tạo thì nó vẫn là một `HTTP connection` và có thể được "upgrade" thông qua bước handshake.
+
+Thông qua kết nối "bền vững" này server có thể gửi các updates cho client. Hơn nữa WebSocket connection sử dụng các cổng **80** và **443** giống như **HTTP** và **HTTPS** nên vẫn có thể hoạt động tốt ngay cả khi có **firewall**
+
+Như đã thấy ở các phần trước, với sender thì **HTTP connection** là một sự lựa chọn tốt nhưng với **receiver** thì hoàn toàn không.
+
+Do WebSocket connection là `persistent` nên việc quản lí connection sẽ được thực hiện hoàn toàn ở bên phía server.
+
+### High-level design
+
+Trong một hệ thống chat không nhất thiết phải sử dụng `stateful` toàn bộ, thay vào đó vẫn có những module sử dụng `stateless` ví dụ như: `Authentication service`, `Service discovery`, ...
+
+Hình bên dưới sẽ mô tả tổng quan về hệ thống gồm: `Stateless`, `Stateful` và `Third-party` integration
+
+![Screen Shot 2022-09-17 at 10 56 57](https://user-images.githubusercontent.com/15076665/190836109-d0780910-fd9a-4242-b3c7-dd92c205c302.png)
+
+#### Stateless service
+
+Vẫn theo hình thức "truyền thống" đó là `public-facing request/ response services`. Sẽ là `login`, `signup`, `user profile`, ...
+
+Các `Stateless service` này sẽ nằm sau load balancer (nhiệm vụ và điều phối request) đến service chính xác dựa theo request paths.
+
+Các services phía sau này có thể là:
+
+- Monolithics
+- Microservices
+
+Một chú ý khác đó là `Service discovery` có nhiệm vụ tìm DNS của chat server mà client sẽ kết nối tới.
+
+#### Stateful service
+
+Stateful service duy nhất ở đây là `chat service`. Stateful là bởi vì client sẽ maintain persistent connection tới chat server.
+
+Về cơ bản thì client sẽ không chuyển server cho đến khi server hiện tại không còn hoạt động nữa. Service discovery sẽ tìm ra chat server phù hợp để tránh tình trạng quá tải.
+
+#### Third-party integration
+
+Với một chat system thì `push notification` là một service đi kèm không thể thiếu vì nó sẽ là cách để thông báo cho user khi có message mới kể cả khi app không hoạt động.
+
+### Scalability
+
+Với thiết kế như hiện tại, ta hoàn toàn có thể đặt toàn bộ vào một server duy nhất. Yêu cầu của thiết kế đó là đáp ứng 1 triều user, mỗi user trung bình cần 10K memory để connect, do vậy ta cần cả thảy 10GB cho user connection.
+
+Tuy nhiên việc đặt mọi thứ vào 1 server sẽ là một "điểm trừ" rất lớn trong mắt của interviewer. Sẽ có nhiều vấn đề xảy ra nếu đặt mọi thứ vào một server duy nhất, có thể kể ra tiêu biểu đó là **Single Point Of Failure**
+
+![Screen Shot 2022-09-17 at 11 18 26](https://user-images.githubusercontent.com/15076665/190836816-3d84e013-7a6c-4dc9-b304-a1fac4d29422.png)
+
+**Presence server** quản lí online/ offline status
+**Key-Value store** được sử dụng để lưu lịch sử chat, khi user chuyển từ trạng thái offline sang online, user sẽ thấy toàn bộ lịch sử chat của mình.
+
+### Storage
+
+Việc đưa ra các quyết định liên quan đến data layer sẽ mất nhiều thời gian và công sức hơn bình thường. Ở đây chúng ta sẽ cân nhắc sự lựa chọn giữa RDB và NoSQL, để đưa ra sự lựa chọn ta cần xem xét đến 2 yếu tố sau:
+
+- Data types
+- Read/ Write patterns
+
+#### Data types
+
+Có 2 loại data type trong một chat system
+
+- Generic data: đây là dữ liệu liên quan đến user profile, setting, ...Các dữ liệu kiểu này sẽ được lưu trong RDB. Các kĩ thuật như sharding hay replication sẽ được sử dụng để phục vụ cho yêu cầu về **availability** và **scalability**
+- Chat history data:  với kiểu dữ liệu này ta cần nắm rõ về `read/ write pattern`
+① Số lượng chat data là rất lớn (Facebook messenger xử lí 60 tỉ messages / ngày)
+② User thường chỉ xem các chat messages gần đây
+③ Vẫn có trường hợp user xem lại các messages trong quá khứ như: search message, jump đến một message cụ thể nào đó, view mention, ...
+④ Tỉ lệ đọc / viết là 1 : 1
+
+**Key-value store** được khuyên dùng ở đây với những lí do sau:
+
+- Horizontall scaling dễ dàng
+- Low latency khi truy cập dữ liệu
+- RDB không xử lí long tail data tốt, khi index tăng thì random access sẽ tốn chi phí
+- Các ứng dụng chat nổi tiếng như Discord hay Facebook messenger đều sử dụng Key-value store
+
+### Data models
+
+#### Message table cho 1 on 1 chat
+
+Primary key ở đây chính là `message_id`, id này sẽ giúp chúng ta quyết định thứ tự của message, không thể dựa vào `created_at` được vì thuộc tính này có thể trùng nhau về mặt giá trị đối với một vài messages.
+
+![Screen Shot 2022-09-17 at 12 00 19](https://user-images.githubusercontent.com/15076665/190838169-206f9715-bc82-48a0-9e8b-e6e29a21148a.png)
+
+#### Message table cho group chat
+
+![Screen Shot 2022-09-17 at 12 11 56](https://user-images.githubusercontent.com/15076665/190838448-a0b5f5ed-a9f2-4d2c-a0d1-98b548f6118b.png)
+
+Ở đây ta tạo `composite key` giữa `message_id` và `channel_id` (channel tương đương với group)
+
+#### Message ID
+
+Generate ID là một chủ đề khá hay ở đây. Message_id có nhiệm vụ đảm bảo thứ tự của các messages. Để làm được điều đó message id cần đáp ứng được 2 yêu cầu sau:
+
+- IDs phải là duy nhất
+- IDs có thể sắp xếp theo thời gian, tức là các rows mới sẽ có IDs cao hơn các rows cũ
+
+Với điều kiện thứ 2, chúng ta thường nghĩ ngay tới `auto_increment` trong MySQL tuy nhiên `NoSQL` không hỗ trợ tính năng này.
+
+Cách tiếp cận thứ 2 đó là sử dụng `global 64-bit sequence number generator` như `Snowflake`.
+
+Cuối cùng là sử dụng `local sequence number generator`. Local ở đây nghĩa là mang tính cục bộ của một group / channel. Cách tiếp cận này đơn giản hơn so với `global ID implementation`
+
+## Bước 3: Thiết kế chi tiết
+
+Với chat system thì:
+
+- Service discovery
+- Messaging flows
+- Online / offline indicator
+
+sẽ là những phần mà chúng ta cần phải đi sâu ở đây
+
+### Service discovery
+
+Có chức năng đưa ra server
+
+- Gần client nhất về mặt vị trí
+- Có capacity đủ để đáp ứng yêu cầu của client
+
+`Apache Zookeeper` là một open-source service discovery phổ biến
+
+![Screen Shot 2022-09-17 at 12 22 36](https://user-images.githubusercontent.com/15076665/190838703-575973b6-f779-482e-af63-2fb29fe71986.png)
