@@ -193,3 +193,110 @@ Có chức năng đưa ra server
 `Apache Zookeeper` là một open-source service discovery phổ biến
 
 ![Screen Shot 2022-09-17 at 12 22 36](https://user-images.githubusercontent.com/15076665/190838703-575973b6-f779-482e-af63-2fb29fe71986.png)
+
+Ở đây Service discovery sẽ tìm ra server phù hợp cho client, trả về thông tin server cho client để client kết nối tới server thông qua web socket
+
+### Message flows
+
+#### 1 on 1 chat flow
+
+![Screen Shot 2022-09-17 at 12 35 33](https://user-images.githubusercontent.com/15076665/190839024-3eecfb2a-48b4-4d22-83a3-be0e4f18063f.png)
+
+Sau khi user gửi message đến `chat server 1`, chat server sẽ lấy được message ID từ ID generator.
+
+Message sẽ được chat server 1 gửi tới `message sync queue`, message cũng được lưu lại trong key-value store
+
+Nếu user B online thì message sẽ được forware đến chat server 2 (user B đang connect tới server này). Nếu offline thì push notification sẽ được gửi từ `Push notification server`.
+
+Ở đây websocket connection sẽ được thiết lập giữa user B và chat server 2
+
+#### Message synchrnoization giữa các devices
+
+![Screen Shot 2022-09-17 at 12 42 24](https://user-images.githubusercontent.com/15076665/190839222-c72fe181-06aa-4513-97fe-a04abbb49f6e.png)
+
+Ta thấy rằng khi user A login vào phone device, websocket connection sẽ được thiết lập giữa chat server và phone device **và cả laptop**.
+
+Mỗi thiết bị sẽ có một biến gọi là *cur_max_message_id*, biến này sẽ lưu max message ID (ID của message mới nhất) trên thiết bị đó.
+
+Các messages thoả mãn hai điều kiện dưới đây sẽ được xem như message mới:
+
+- recipient ID = login user ID
+- message ID trong key-value store phải lớn hơn *cur_max_message_id*
+
+Việc sử dụng *cur_max_message_id* sẽ giúp quá trình đồng bộ các message mới trên từng thiết bị trở nên dễ dàng hơn
+
+#### Small group chat flow
+
+So với 1 on 1 chat thì group chat sẽ phức tạp hơn
+
+![Screen Shot 2022-09-17 at 15 23 29](https://user-images.githubusercontent.com/15076665/190843710-ea0c45bb-0c41-4adb-82fe-09a0012084fe.png)
+
+Như ở hình trên ta giả sử group có 3 members là A, B và C.
+
+Khi user A gửi message, bản copy của message này sẽ được đưa vào `message queue sync` của 2 users B, C. Các `message queues` này có thể hiểu như `inbox` của user. Sử dụng cách này có 2 ưu điểm như dưới đây:
+
+- Đơn giản để sync user message khi user chỉ cần "check inbox" là đủ
+- Khi group member ít thì việc lưu bản sao của message ở nhiều message queues cũng không gây tốn bộ nhớ quá nhiều
+
+WeChat cũng sử dụng cách tiếp cận tương tự trên, nên do đó họ giới hạn số member tối đa trong 1 group là 500.
+
+Về cơ bản khi càng có nhiều member trong group thì số lượng bản sao message được lưu sẽ tăng lên.
+
+Ở phía người nhận thì họ có thể nhận message từ nhiều senders khác nhau như hình minh hoạ dưới đây:
+
+![Screen Shot 2022-09-17 at 15 35 42](https://user-images.githubusercontent.com/15076665/190843999-a3b84dd0-9f63-4c23-a9b4-32937a36e9a1.png)
+
+#### Online presence
+
+Dấu hiệu online màu xanh lam ở phía dưới profile picture chính là trang thái online/ offline của người dùng.
+
+Về cơ bản `presence server` sẽ quản lí online status và tương tác với client thông qua `WebSocket`.
+
+Dưới đây là high-level flow
+
+**User login:**
+
+Sau khi WebSocket connection được thiết lập giữa client và real-time service, user A online status và *last_active_at* time-stamp sẽ được lưu trong `key-value store`. Presence indicator sẽ show user đang online sau khi login
+
+![Screen Shot 2022-09-17 at 15 41 41](https://user-images.githubusercontent.com/15076665/190844224-431c4e67-2709-44a2-a9c4-558d6c786edd.png)
+
+**User logout:**
+
+Khi user logout thì `status` trong `key-value store` sẽ chuyển thành `offline` và `presence indicator` sẽ show user đã offline
+
+![Screen Shot 2022-09-17 at 16 03 13](https://user-images.githubusercontent.com/15076665/190844978-8f55bf79-2be9-486a-8b46-526200011254.png)
+
+**User disconnect:**
+
+Trong trường hợp user ngắt kết nối khỏi internet thì cách tiếp cận update `key-value store` thành `offline` và update lại thành `online` khi user kết nối trở lại sẽ không đem lại UX tốt. Nguyên nhân bởi việc kết nối của user bị chập chờn hoàn toàn có thể xảy ra thường xuyên, hơn thế nữa khi user vào tunnel thì user sẽ bị ngắt kết nối tạm thời khỏi internet.
+
+Ta sẽ áp dụng cơ chế `hearbeat` để giải quyết vấn đề này. Trong một khoảng thời gian là **x giây** user sẽ gửi `heartbeat event` cho `presence server`. Nếu server nhận được thì user sẽ được xem như online và ngược lại sẽ là offline.
+
+Hình dưới là minh hoạ cho cơ chế `heartbeat` với period time là 5s. Sau 30s khi server không nhận được `heartbeat event` thì user sẽ được xem như là đang offline.
+
+![Screen Shot 2022-09-17 at 16 12 41](https://user-images.githubusercontent.com/15076665/190845234-687d2931-113b-4682-ab1c-9fb18273cbf5.png)
+
+#### Online status fanout
+
+Vậy làm thế nào để các user khác biết được việc user A chuyển online / offline status. Câu trả lời đó là mô hình `publisher - subscriber`
+
+![Screen Shot 2022-09-17 at 16 20 25](https://user-images.githubusercontent.com/15076665/190845543-55a51928-8936-4137-9d5a-40fa3296f117.png)
+
+Hình phía trên mình hoạ cho mô hình `publisher - subscriber` của `presence server`. Giả sử ngoài user A còn có 3 users khác là B, C, D. Server sẽ maintain các friend pair channels (A-B, A-C, A-D). Khi user online status thay đổi sẽ có một event được đưa vào channel và các user B, C, D khi subscribe channel sẽ nhận được việc thay đổi online status của user A.
+
+Tương tác giữa các clients với server đều thông qua real-time websocket.
+
+Thiết kế này được `WeChat` sử dụng và chỉ áp dụng cho một nhóm nhỏ các user. Khi số lượng user lớn thì thiết kế này sẽ tốn thời gian và chi phí.
+
+Với group có 100,000 users thì mỗi khi user thay đổi status thì sẽ phát sinh ra 100,000 events. Cách giải quyết bottleneck performance đó là chỉ update status khi user vào group hoặt refresh friend list
+
+## Bước 4: Tổng quát
+
+Một vài điểm sau đây nên được thảo luận với interviewer nếu có thời gian:
+
+- Hỗ trợ gửi file, ảnh, video. Nén dữ liệu, cloud storage, thumbnails là các chủ đề khá hay
+- End-to-end encryption. Whatsapp hỗ trợ end-to-end encryption, chỉ có sender và các recipient mới đọc được message
+- Caching message phía client sẽ giúp giảm đi lượng dữ liệu trao đổi giữa server và client
+- Error handling:
+  - Khi Chat server gặp sự cố, service discovery (Zookeeper) sẽ tìm ra server phù hợp để client connect tới
+  - Message resent mechanism. Retry và queueing là các kĩ thuật phổ biến để giải quyết vấn đề này
