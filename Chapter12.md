@@ -290,7 +290,7 @@ Thiết kế này được `WeChat` sử dụng và chỉ áp dụng cho một n
 
 Với group có 100,000 users thì mỗi khi user thay đổi status thì sẽ phát sinh ra 100,000 events. Cách giải quyết bottleneck performance đó là chỉ update status khi user vào group hoặt refresh friend list
 
-## Bước 4: Tổng quát
+## Bước 4: Tổng kết
 
 Một vài điểm sau đây nên được thảo luận với interviewer nếu có thời gian:
 
