@@ -46,3 +46,25 @@ Tóm lược lại các yêu cầu chính:
 
 ### Data gathering service
 
+Ta sẽ sử dụng một bảng chứa `query` và `frequency` của query đó. Cứ mỗi khi query được người dùng gửi lên, thì nó sẽ được đưa vào bảng này và cập nhật frequency.
+
+![Screen Shot 2022-09-27 at 8 36 43](https://user-images.githubusercontent.com/15076665/192399076-106f71d6-2921-454f-9c89-ba438b558544.png)
+
+### Query service
+
+Giả sử ta có bảng lưu query và frequency tương ứng như hình bên dưới
+
+![Screen Shot 2022-09-27 at 8 39 19](https://user-images.githubusercontent.com/15076665/192399293-bfe25292-d0c9-4036-8514-3b6c2dd8ae5a.png)
+
+Khi người dùng gõ `tw` thì sẽ hiển thị top 5 câu query dựa theo `frequency` ở bảng nêu trên. Để lấy ra 5 câu query, ta sẽ thực thi câu SQL sau:
+
+```SQL
+SELECT * FROM frequency_table
+WHERE query LIKE `prefix%`
+ORDER BY frequency DESC
+LIMIT 5;
+```
+
+Giải pháp này phù hợp khi database nhỏ, với database có quy mô lớn thì sẽ diễn ra hiện tượng bottleneck. Giải pháp cho database lớn sẽ được xem xét ở phần `deep-dive design`
+
+## Bước 3: Design deep dive
