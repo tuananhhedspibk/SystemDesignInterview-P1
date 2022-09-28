@@ -132,3 +132,31 @@ Người dùng hiếm khi search một query dài, nên chúng ta có thể gi�
 Ta thấy rằng lúc này việc tìm k top search queries sẽ có độ phức tạp thời gian là `O(1)`. Vậy nên tổng thời gian tìm kiếm cho cả thuật toán chỉ còn `O(1)`
 
 ### Data Gathering Service
+
+Như ở phần high-level design ta có thấy, cứ mỗi khi người dùng nhập search query thì sẽ tiến hành cập nhật dữ liệu. Cách làm này không hiệu quả ở 2 điểm sau:
+
+- Người dùng có thể nhập cả tỉ câu query 1 ngày nên việc update tries thường xuyên sẽ làm ảnh hưởng đến hiệu năng của query service
+- Các suggestions phổ biển có thể không thay đổi quá nhiều, nên việc build lại tries là việc không quá cần thiết
+
+Dữ liệu dùng để build tries thường được lấy từ `analytics` hoặc `logging service`. Hình dưới là flow của một `data gathering service`
+
+![Screen Shot 2022-09-29 at 8 28 32](https://user-images.githubusercontent.com/15076665/192905971-ede42886-919c-420e-b108-d309f9d98202.png)
+
+`Analytics log` thường xuyên được append và không được index như hình dưới đây
+
+![Screen Shot 2022-09-29 at 8 29 30](https://user-images.githubusercontent.com/15076665/192906155-797b16d8-60d1-4adc-a10b-75bedb5fa02d.png)
+
+`Aggregator` sẽ làm nhiệm vụ "làm sạch" log cho đúng format yêu cầu và thu thập dữ liệu từ log.
+Với các ứng dụng như Twitter thường yêu cầu "phân tích" log real-time thì việc phân tích log đều đặn trong những khoảng thời gian ngắn cũng có thể coi là "real time".
+
+Nếu không cần thiết phải real-time thì việc phân tích log một lần một tuần là đủ. Đây là yêu cầu cần phải xác minh khi phỏng vấn.
+
+`Aggregate data` là quá trình tổng kết dữ liệu log theo một khoảng thời gian định trước. Hình dưới đây là `aggregate data` theo từng tuần (với `time` là thời điểm bắt đầu một tuần)
+
+![Screen Shot 2022-09-29 at 8 36 00](https://user-images.githubusercontent.com/15076665/192906715-9361b2c7-16f5-4a08-bcc8-e6988b2edabe.png)
+
+`Workers` là một tập các servers thực hiện các `async job` theo từng interval đều đặn. Nhiệm vụ của các workers là build `tries data structure` và lưu nó vào `tries DB`
+
+`Trie cache` là distributed cache của tries, nó sẽ lấy snapshot của DB theo tuần
+
+`Trie DB`
