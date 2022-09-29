@@ -159,4 +159,42 @@ Nếu không cần thiết phải real-time thì việc phân tích log một l�
 
 `Trie cache` là distributed cache của tries, nó sẽ lấy snapshot của DB theo tuần
 
-`Trie DB`
+`Trie DB` - đây là cách chúng ta lưu trữ "lâu dài" tries. Có 2 lựa chọn ở đây:
+
+- `Document DB`: ta sẽ lấy snapshot tries, serialize nó và lưu vào DB (MongoDB là một sựa lựa chọn tốt cho trường hợp này)
+- `Key-value store`: ta sẽ sử dụng hash table để lưu tries. Cụ thể là
+  - `Prefix` sẽ là key
+  - Các dữ liệu của `prefix node` sẽ lưu trong value của hash
+
+Hình dưới đây sẽ minh hoạ cho cách lưu trữ trên:
+
+![Screen Shot 2022-09-29 at 23 01 12](https://user-images.githubusercontent.com/15076665/193052615-03ecbde6-c661-4344-affd-567366d74ed0.png)
+
+### Query Service
+
+Trong phần high-level design, ta sẽ query trực tiếp dữ liệu trong DB để lấy ra top 5 queries. Trong phần này chúng ta sẽ đưa ra cách làm cải thiện cho hướng tiếp cận trên
+
+![Screen Shot 2022-09-29 at 23 06 25](https://user-images.githubusercontent.com/15076665/193053926-ec4948a3-9dc3-4275-bd21-123943e15ef5.png)
+
+Hình trên là minh hoạ cho cách cải thiện.
+
+Khi prefix được gửi đến, ta sẽ tiến hành lấy dữ liệu từ `tries cache` để trả về cho client. Trong trường hợp `cache miss` ta sẽ lấy dữ liệu từ `tries DB` & "đặt" kết quả lại cache, những lần query tiếp theo sẽ lấy kết quả từ `cache`
+
+`Query service` yêu cầu tốc độ phản hồi nhanh. Dưới đây là một vài cách tiếp cận để cải thiện tốc độ
+
+- Sử dụng AJAX
+- Browser caching. Với một số ứng dụng, query suggestion không thay đổi quá nhiều trong một thời gian ngắn, do đó ta có thể cache kết quả lại browser cache. Google search engine cũng sử dụng cách tiếp cận tương tự. Dưới đây là response header khi bạn search 1 term bất kì trên google.
+
+![Screen Shot 2022-09-29 at 23 13 14](https://user-images.githubusercontent.com/15076665/193055275-7d0b58bb-7dea-47d3-970b-09ee034f883e.png)
+
+ở đây ta thấy `cache-control: private, max-age: 3600` có nghĩa là sẽ cache kết quả lại browser cache trong khoảng thời gian 3600s = 1 giờ
+
+- Data Sampling: với số lượng queries lớn thì việc log và xử lí liên tục sẽ làm tốn thời gian và tài nguyên. Do đó ta đơn giản hoá bằng cách `chỉ log 1 trong số N queries`
+
+### Tries operation
+
+#### Create
+
+Tries được tạo bởi `worker` bằng `aggregated data`. Nguồn dữ liệu là từ `Analytic Log/DB`
+
+#### Update
