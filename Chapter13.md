@@ -198,3 +198,29 @@ Khi prefix được gửi đến, ta sẽ tiến hành lấy dữ liệu từ `t
 Tries được tạo bởi `worker` bằng `aggregated data`. Nguồn dữ liệu là từ `Analytic Log/DB`
 
 #### Update
+
+Có 2 phương án update như sau:
+
+- `Update theo tuần`: lúc này ta sẽ thay thế tries cũ bằng tries mới
+- `Update từng node trực tiếp`: trên thực tế ta nên tránh cách tiếp cận này vì nó có chi phí cao (đặc biệt là khi tries lớn). Không những thế việc update node cũng làm ảnh hưởng đến các node cha của nó vì các node cha lưu top queries của node con.
+
+Như ví dụ dưới đây, ta cập nhật giá trị của `beer` từ `10` thành `30`
+
+![Screen Shot 2022-09-30 at 8 13 48](https://user-images.githubusercontent.com/15076665/193158200-3a876b03-4ac7-4a4e-867e-7288b3da2030.png)
+
+#### Delete
+
+Với các từ ngữ nhạy cảm hoặc các nội dung "xấu", ta cần lọc nó trước khi gửi đến cho người dùng. Cách làm ở đây là sử dụng một "filter" đặt giữa `API server` và `Tries cache` như hình bên dưới
+
+![Screen Shot 2022-09-30 at 8 15 56](https://user-images.githubusercontent.com/15076665/193158532-00bb598e-aef1-4fbc-ad97-63a88393b600.png)
+
+Ngoài ra việc sử dụng filter cũng giúp ta có thể loại bỏ đi các nội dung "không mong muốn" một cách bất đồng bộ để có thể đưa nội dung "tốt" vào trong `Tries DB`
+
+### Scale the storage
+
+Khi dữ liệu về queries nhiều lên thì việc tăng khả năng scale của hệ thống là điều cần thiết. Giả sử hệ thống chỉ hỗ trợ tiếng anh. Một cách làm đơn giản đó là sharding dựa theo kí tự đầu tiên
+
+- Với 2 servers ta sẽ lưu lần lượt 'a' → 'm' tại server 1, 'n' → 'z' tại server 2
+- Với 3 servers thì sự phân bổ sẽ là `a → i`, `j → r`, `s → z`
+
+Với cách tiếp cận trên, số lượng servers có thể tăng lên tới 26 server (do bảng kí tự tiếng anh có 26 chữ cái). Có thể coi đây là sharding level 1, cũng có thể ta cần sharding level 2 và level 3. Ví dụ với các queries bắt đầu bằng kí tự `a` ta sẽ lưu `aa-ag`, `ah-an`, `ao-au`, `av-az` ở level 2 với 4 servers. 
