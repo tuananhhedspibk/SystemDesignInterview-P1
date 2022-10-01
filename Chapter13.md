@@ -223,4 +223,36 @@ Khi dữ liệu về queries nhiều lên thì việc tăng khả năng scale c�
 - Với 2 servers ta sẽ lưu lần lượt 'a' → 'm' tại server 1, 'n' → 'z' tại server 2
 - Với 3 servers thì sự phân bổ sẽ là `a → i`, `j → r`, `s → z`
 
-Với cách tiếp cận trên, số lượng servers có thể tăng lên tới 26 server (do bảng kí tự tiếng anh có 26 chữ cái). Có thể coi đây là sharding level 1, cũng có thể ta cần sharding level 2 và level 3. Ví dụ với các queries bắt đầu bằng kí tự `a` ta sẽ lưu `aa-ag`, `ah-an`, `ao-au`, `av-az` ở level 2 với 4 servers. 
+Với cách tiếp cận trên, số lượng servers có thể tăng lên tới 26 server (do bảng kí tự tiếng anh có 26 chữ cái). Có thể coi đây là sharding level 1, cũng có thể ta cần sharding level 2 và level 3. Ví dụ với các queries bắt đầu bằng kí tự `a` ta sẽ lưu `aa-ag`, `ah-an`, `ao-au`, `av-az` ở level 2 với 4 servers.
+
+Tuy nhiên nếu để ý kĩ ta sẽ thấy các queries bắt đầu với chữ cái cái `c` sẽ nhiều hơn so với chữ cái `x`, nên nếu áp dụng cách tiếp cận trên sẽ dẫn tới tình trạng phân phố dữ liệu không đồng đều.
+
+Để giải quyết vấn đề trên ta có thể sử dụng `shard map manager`, `shard map manager` sẽ maintain một `lookup database` để biết được queries được lưu trữ ở dòng nào. Hình dưới đây sẽ minh hoạ cho cách tiếp cận sử dụng `shard map manager`
+
+![Screen Shot 2022-10-01 at 11 42 36](https://user-images.githubusercontent.com/15076665/193380009-67ce1ae9-b696-4855-9231-cd60a6e80f8c.png)
+
+Với cách tiếp cận này ta sẽ phân tích lịch sử queries, nếu có một sự đồng đều giữa tổ hợp `s` với `u`, `v`, `x`, `w`, `z` thì ta sẽ dùng 2 shard, 1 shard để lưu `s`, shard còn lại sẽ lưu `u` đến `z`
+
+## Bước 4: Tổng kết
+
+Một vài câu hỏi khác mà interviewer có thể hỏi bạn
+
+### Nếu hỗ trợ đa ngôn ngữ thì cách xử lí sẽ ra sao ?
+
+Lưu `Unicode character` ở tries nodes
+
+### Xử lí như thế nào với trường hợp top queries ở mỗi region là khác nhau ?
+
+Ta sẽ build tries dùng riêng cho từng region. Ngoài ra để cải thiện tốc độ response, ta có thể sử dụng `CDN`
+
+### Trong trường hợp trending queries thay đổi thì sẽ xử lí như thế nào ?
+
+Với trường hợp top most queries thay đổi thì thiết kế ban đầu không còn phù hợp lí do là vì:
+
+- Offline worker không thể cập nhật được trending queries do ta update tries theo tuần
+- Chi phí "build đi build lại" tries theo trending cũng không hề rẻ
+
+Một vài giải pháp có thể tham khảo như sau:
+
+- Thay đổi ranking model, đánh trọng số cho search queries
+- Giảm working data set bằng việc sử dụng sharding
