@@ -66,3 +66,53 @@ High level uploading flow sẽ như dưới đây:
 - CDN: các videos được cache trong CDN, khi ta nhấn play thì video sẽ được stream về từ CDN
 - Completion queue: message queue lưu thông tin về event "transcoding video complete"
 - Completion handler: các workers sẽ pull event từ `completion queue` về và update metadata trong DB và cache
+
+Quá trình upload video sẽ bao hàm 2 flow con song song sau:
+
+- Upload video
+- Update video metadata (video format, user infor, video size, ...)
+
+Song song với việc upload video, client cũng request để update metadata, request bao gồm các thông tin như (video format, size, ...) API server sẽ cập nhật DB và cache
+
+![Screen Shot 2022-10-01 at 21 46 32](https://user-images.githubusercontent.com/15076665/193410342-5406a976-4ae0-44d0-a0bf-03ec6287ecf3.png)
+
+### Video streaming flow
+
+Streaming khác với download ở chỗ download tức là ta copy nguyên si video từ source về user device còn streaming là quá trình lấy dữ liệu từ source video về user device liên tục.
+
+Khi ta xem video trên youtube, youtube web sẽ load video từng chút từng chút về một cách liên tục nên ta có thể xem video ngay lập tức và không bị ngắt quãng
+
+Trước khi đi vào streaming flow ta cần nắm một khái niệm quan trọng đó là `streaming protocol` - là cách chúng ta sẽ điều khiển luồng dữ liệu luân chuyển khi tiến hành streaming. Một streaming protocol phổ biến là `MPEG-DASH`
+
+Các streaming protocol khác nhau sẽ hỗ trợ `video encoding`, `playback player` khác nhau. Khi tiến hành thiết kế một video streaming service ta cần chọn `streaming protocol` phù hợp cho usecase của chúng ta
+
+Video sẽ được stream từ CDN, edge server gần nhất sẽ truyền video đến cho client giúp giảm tối đa thời gian trễ
+
+## Bước 3: Deep dive design
+
+### Video transcoding
+
+Khi bạn thu một video trên điện thoại của bạn, video sẽ được xuất ra ở một format nhất định, muốn video này cũng được "mượt" trên thiết bị khác thì video phải được encode với format và bitrate phù hợp (bitrate là tỉ lệ bit được xử lí / thời gian - về lí thuyết thì bitrate càng cao thì video sẽ càng mượt)
+
+High bitrate stream cần internet tốc độ cao và các xử lí phức tạp
+
+Video transcoding quan trọng vì những lí do sau:
+
+- Raw video với chất lượng cao có thể yêu cầu đến 60 frames / giây, nên để lưu trữ video có thể tốn tới cả trăm GB bộ nhớ
+- Rất nhiều devices chỉ hỗ trợ một số định dạng video nhất định. Do đó việc transcoding sẽ giúp đảm bảo về format trên các devices khác nhau
+- Để đảm bảo user có thể xem video chất lượng cao và có trải nghiệm xem video "mượt" nhất có thể thì ta sẽ stream những `video có độ phân giải cao` cho những user có `băng thông mạng rộng` còn `video có độ phân giải thấp` cho users `có băng thông thấp`
+- Network condition có thể bị thay đổi thường xuyên (đặc biệt là trên mobile), do đó ta có thể chỉnh sửa chất lượng độ phân giải video (tự động hoặc bằng tay) tuỳ theo network condition của device
+
+Các format types khác nhau đều có cấu trúc gồm 2 phần:
+
+- Container: chứa video file, audio, metadata (format của container chính là file extension, ví dụ như: .mp4, .mov)
+- Codecs: đây là giải thuật `nén` & `giải nén` với mục đích làm giảm kích cỡ video khi tiến hành điều chỉnh chất lượng video
+
+### Directed acyclic graph (DAG) model
+
+Transcoding là quá trình tốn kém chi phí và thời gian. Bên cạnh đó thì content creator có thể có những yêu cầu như:
+
+- Watermark cho video
+- Một số tự mình upload thumbnails
+- Một số upload video chất lượng cao còn một số thì không
+
