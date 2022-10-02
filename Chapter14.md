@@ -235,10 +235,93 @@ VD: Người dùng ở Mỹ sẽ upload video lên `North American center`, ở 
 
 #### Speed optimization: parallelism everywhere
 
-Để tăng tốc bằng cách xử lí song song ta có thể tiến hành tạo thêm một system mới song song với system hiện có.
+Một cách tiếp cận ở đây đó là giảm đi sự phụ thuộc lẫn nhau giữa các thành phần trong hệ thống để cho phép hệ thống có thể cho phép xử lí song song
 
 Muốn triển khai xử lí song song thì thiết kế ban đầu cần phải được sửa đổi
 
 Hình dưới đây minh hoạ quá trình "vận chuyển" video từ `original storage` đến `CDN` (chú ý rằng output sẽ phụ thuộc vào input của bước trước) của thiết kế hiện nay
 
 ![Screen Shot 2022-10-02 at 13 10 18](https://user-images.githubusercontent.com/15076665/193437470-b329cf2e-3b11-408a-8f01-35b104b298e6.png)
+
+Để giúp các thành phần trong hệ thống giảm đi sự phụ thuộc vào nhau ta có thể sử dụng một `message queue` như hình minh hoạ bên dưới
+
+![Screen Shot 2022-10-02 at 16 08 58](https://user-images.githubusercontent.com/15076665/193442406-6a35a5cc-9b01-4939-9bd1-b29ec10718c3.png)
+
+Có thể giải thích đơn giản tác dụng của `message queue` trong việc giảm sự phụ thuộc giữa các thành phần như sau:
+
+- Trước khi có `message queue` thì `encoding module` phải chờ output từ `download module`
+- Sau khi có `message queue` thì `encoding module` không còn phải chờ output từ `download module` như trước nữa mà thay vào đó khi `message queue` có message thì `encoding module` sẽ pull về và thực thi các jobs một cách song song
+
+#### Safety optimization: pre-signed upload URL
+
+Safety là một phần không thể thiếu với product. Để đảm bảo chỉ những authorized users mới có thể upload video vào đúng location, nên từ đó chúng ta có thể cân nhắc đến giải pháp là `pre-signed URLs` như hình bên dưới
+
+![Screen Shot 2022-10-02 at 16 18 55](https://user-images.githubusercontent.com/15076665/193442777-2a01f7a0-ba3b-4d59-9d1e-ca70e6f099e7.png)
+
+Client cần pre-signed URL để có quyền access đến location trên storage location (thuật ngữ `pre-signed URL` được đưa ra bởi AWS, các cloud service providers khác sẽ có các tên gọi khác)
+
+#### Safety optimization: bảo vệ videos của bạn
+
+Để đảm bảo bản quyền của videos chúng ta có thể áp dụng một trong những options bên dưới:
+
+- Digital rights management (DRM) system: Apple FairPlay, Google Widevine, ...
+- AES encryption: mã hoá video và configure một authorization policy. Video được mã hoá sẽ được giải mã khi playback, điều này đảm bảo chỉ những authorized users mới có thể xem được những video đã mã hoá
+- Visual watermarking: đây là ảnh chèn phía trên video (có thể là thông tin về video, ...)
+
+#### Cost-saving optimization
+
+CDN là một thành phần quan trọng trong hệ thống của chúng ta. Nhưng như ở phần envelope estimate đã thấy rằng chi phí cho CDN là khá đắt.
+
+Cách làm của Youtube để giảm chi phí CDN đó là `long-tail distribution`, cụ thể là chỉ có một số ít nhất định các videos được access thường xuyên trong khi đó các videos còn lại thì ít hoặc không được access. Dựa theo đó ta có một vài phương án tối ưu như sau:
+
+① Chỉ những video phổ biến (được access nhiều) mới được đưa vào CDN, các videos còn lại (có ít hoặc không có viewers) sẽ được đưa vào `storage server`
+
+![Screen Shot 2022-10-02 at 16 32 12](https://user-images.githubusercontent.com/15076665/193443243-27e57c13-fe8b-46c6-93bb-ad6894a91306.png)
+
+② Với những nội dung không phổ biến ta không nhất thiết phải lưu trữ quá nhiều encoded versions của nó, các video ngắn có thể sẽ được encode khi cần thiết
+
+③ Một vài videos chỉ phổ biến ở một số regions do đó ta không nhất thiết phải phân bổ nó đến toàn bộ các regions của hệ thống
+
+④ Xây dựng CDN của chính mình để giảm đi giá cước băng thông và cải thiện trải nghiệm xem của người dùng (tuy nhiên đây là một project rất rất lớn và cũng tốn kém rất nhiều chi phí)
+
+Các phương án tối ưu trên đây đều dựa vào:
+
+- Độ phổ biến của nội dung
+- User access pattern
+- Video size
+
+Một điều quan trọng khác đó là **phân tích historical viewing patterns** trước khi tiến hành optimization
+
+#### Error handling
+
+Các hệ thống lớn thường sẽ dễ phát sinh lỗi. Để xây dựng một hệ thống có khả năng chịu lỗi tốt ta cần xử lí lỗi và hồi phục hệ thống ngay tức thì. Có 2 loại lỗi chính:
+
+- **Lỗi có thể phục hồi**. Với loại lỗi này ta có thể kể đến trường hợp khi video segment transcode gặp sự cố, cách giải quyết ở đây đó là retry lại một vài lần. Ngay cả khi retry mà vẫn gặp lỗi thì nó sẽ chuyển thành **Lỗi không thể phục hồi**, lúc này cách xử lí đó là **trả về mã lỗi cho client**
+- **Lỗi không thể phục hồi**, ta có thể ra ví dụ về loại lỗi này như `malformed video format`, lúc này ta sẽ dừng mọi xử lí liên quan đến video và trả về mã lỗi cho client
+
+Một vài lỗi điển hình (và cách giải quyết) đối với các system components có thể được liệt kê như dưới đây:
+
+- **Upload error**: thử lại vài lần
+- **Split video error**: nếu các client version cũ không thể chia nhỏ video thành các GOPs alignment thì toàn bộ video sẽ được upload và công việc chia nhỏ video sẽ do server đảm nhận
+- **Transcoding error**: retry
+- **Preprocessor error**: regenerate DAG diagram
+- **DAG scheduler error**: reschedule task
+- **Resource manager queue down**: sử dụng replica
+- **Task worker down**: retry task với một worker mới
+- **API server down**: do server là stateless nên request sẽ được chuyển hướng đến một server khác
+- **Metadata cache server down**: data được replicate liên tục do đó nếu một node bị "sập" thì vẫn có thể sử dụng các node khác. Chúng ta có thể thay thế cache server bị "sập" bằng một cache server khác
+- **Metadata server down**
+  - Nếu master down: chọn một slave khác làm "master tạm"
+  - Nếu slave down: chọn một slave khác để đọc, sau đó ta hoàn toàn có thể thay thế slave down bằng một slave mới
+
+## Bước 4: Tổng kết
+
+Một vài chủ đề khác có thể bàn thêm với interviewer:
+
+- Scale API tier: do API là stateless nên ta có thể horizontally scale server
+- Scale DB: DB replication, sharding
+- Live streaming: video được record và broadcast real time. Live stream và non-live stream sẽ có một vài điểm tương đồng như **uploading**, **encoding**, **streaming**. Một vài điểm khác biệt cơ bản có thể liệt kê như sau:
+  - Live stream yêu cầu latency requirement khác, do đó cần `streaming protocol` khác
+  - Live stream không yêu cầu quá cao về parallelism do video chunks đã được xử lí real time rồi
+  - Live stream cũng yêu cầu cơ chế xử lí lỗi khác. Các cơ chế xử lí lỗi tốn nhiều thời gian đều không được chấp nhận
+- Gỡ video: một vài videos có nội dung xấu hoặc vi phạm bản quyền sẽ bị hệ thống phát hiện và loại bỏ hoặc cũng có thể bị reported bởi users
