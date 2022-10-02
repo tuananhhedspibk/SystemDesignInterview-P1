@@ -116,3 +116,129 @@ Transcoding là quá trình tốn kém chi phí và thời gian. Bên cạnh đ�
 - Một số tự mình upload thumbnails
 - Một số upload video chất lượng cao còn một số thì không
 
+Cần có thêm abstraction level để:
+
+- Tăng khả năng xử lí song song
+- Hỗ trợ các pipeline processing khác nhau
+
+Facebook hỗ trợ DAG model, ở đó họ định nghĩa các tasks trong stages để chúng có thể được thực thi "tuần tự" hoặc "song song".
+
+> Nói một cách đơn giản thì "DAG model" chính là mô hình định nghĩa các tasks mà ở đó các tasks này có thể được thực thi "tuần tự" hoặc "song song"
+
+Với hệ thống của chúng ta, chúng ta sẽ định nghĩa một DAG model như sau:
+
+![Screen Shot 2022-10-02 at 11 56 25](https://user-images.githubusercontent.com/15076665/193435873-2fb3ec8a-3d66-4cf5-b771-0275ac4c1a6b.png)
+
+Một video gốc luôn được chia thành:
+
+- Video file
+- Audio
+- Metadata
+
+Sau đây là một số tác vụ sẽ được áp dụng cho `video file`:
+
+- `Inspection` - kiểm chứng chất lượng của video cũng như kiểm tra xem video có phải là `malformed` hay không
+- `Video encoding` - video được convert để hỗ trợ các độ phân giải, codec, bitrate khác nhau
+- `Thumbnail` - có thể được upload bởi user hoặc được gen bởi hệ thống
+- `Watermark` - ảnh được đặt trên top layer của video để định danh các thông tin về video
+
+Hình dưới đây mô tả một ví dụ về video encoding
+
+![Screen Shot 2022-10-02 at 12 03 03](https://user-images.githubusercontent.com/15076665/193436028-ca0dc9ed-7634-4fe2-b0eb-ae77adce9b50.png)
+
+### Video transcoding architecture
+
+Kiến trúc dưới đây sẽ tận dụng các cloud services khác để triển khai
+
+![Screen Shot 2022-10-02 at 12 05 46](https://user-images.githubusercontent.com/15076665/193436072-bc2a2b9f-ae8d-40af-9a6b-22a8b97af781.png)
+
+#### Preprocessor
+
+Có 4 nhiệm vụ sau đây:
+
+①`Video splitting` - chia nhỏ video thành các GOP (Group of Picture). 1 GOP là 1 chuỗi các frames được sắp thứ tự. 1 GOP là một đơn vị độc lập có thể "xem được" (thường khoảng vài giây)
+② Chia nhỏ video cho các devices đời cũ (do các devices này không hỗ trợ video splitting)
+③ `DAG generation` - quá trình này dựa theo config file mà client programmer viết. Một DAG model đơn giản có thể như dưới đây:
+
+![Screen Shot 2022-10-02 at 12 14 24](https://user-images.githubusercontent.com/15076665/193436351-6c24ece3-a842-4fb1-bfcf-bccb26d90bfb.png)
+
+Dưới đây là 2 files config của 2 tasks trên
+
+![Screen Shot 2022-10-02 at 12 20 45](https://user-images.githubusercontent.com/15076665/193436440-26140432-e5df-423e-b7f5-1fbccb5d0faa.png)
+
+④ `Cache data` - Preprocessor sẽ lưu các segment videos vào `temporary storage` để trong trường hợp encoding fails thì hệ thống vẫn có thể lấy segment videos từ bộ nhớ tạm ra dùng cho quá trình retry (tăng reliability)
+
+#### DAG scheduler
+
+Chia nhỏ `DAG graph` thành các tasks ứng với các stages và đặt chúng vào `task queue` bên trong `Resource manager` như hình minh hoạ dưới đây
+
+![Screen Shot 2022-10-02 at 12 25 49](https://user-images.githubusercontent.com/15076665/193436526-978f960b-24dc-46b5-922a-0afd17d85b3c.png)
+
+#### Resource Manager
+
+Bao gồm các `queues` và `task scheduler` đảm nhận việc phân bổ tài nguyên như hình bên dưới
+
+![Screen Shot 2022-10-02 at 12 28 14](https://user-images.githubusercontent.com/15076665/193436581-0df898a2-1972-4094-8843-52fc4bc25dca.png)
+
+- Task queue: priority queue bao gồm các tasks cần được thực thi
+- Worker queue: priority queue bao gồm `utilization info` về các workers
+- Running queue: lưu thông tin về task và worker đang thực thi task đó
+- Task scheduler:
+  - Lấy task sẽ được thực thi dựa theo mức độ ưu tiên (cao nhất) cũng như worker (tối ưu nhất) sẽ sử dụng để thực thi task đó
+  - "Hướng dẫn" cho worker cách thực hiện task
+  - Các thông tin về `task/worker` sẽ được bind và đưa vào running queue
+  - Loại bỏ thông tin về job (worker thực thi task) khi job đã hoàn thành
+
+#### Task workers
+
+Chạy các tasks được định nghĩa bởi DAG. Các task workers khác nhau có thể chạy các tasks khác nhau
+
+![Screen Shot 2022-10-02 at 12 37 48](https://user-images.githubusercontent.com/15076665/193436800-191134bf-e26e-499d-891d-00c1c458297d.png)
+
+#### Temporary storage
+
+Multiple storage systems được sử dụng ở đây. Việc lựa chọn `storage system` sẽ tuỳ thuộc vào các yếu tố như:
+
+- Data type
+- Data size
+- Access frequency
+- ...
+
+Với metadata có 2 đặc điểm sau:
+
+- Kích thước nhỏ
+- Thường xuyên được truy xuất bởi worker
+
+thì ta có thể caching nó trong memory. Còn với video và audio có kích cỡ lớn hơn ta sẽ sử dụng `blob storage system`. Dữ liệu được lưu trong `temporary storage` sẽ được giải phóng khi quá trình xử lí video tương ưng được hoàn tất
+
+#### Encoded video
+
+Output của flow (VD: test.mp4)
+
+### System optimizations
+
+#### Speed optimization: parallelize video uploading
+
+Trong thực tế, ta sẽ không upload toàn bộ video lên một lúc mà sẽ chia nhỏ video thành các GOPs như hình dưới đây
+
+![Screen Shot 2022-10-02 at 13 00 41](https://user-images.githubusercontent.com/15076665/193437256-be6bfba9-fcf1-4469-a539-ad5e4cf2b67e.png)
+
+Việc chia nhỏ video thành các GOPs sẽ được triển khai bởi phía client để tăng tốc độ upload
+
+![Screen Shot 2022-10-02 at 13 02 16](https://user-images.githubusercontent.com/15076665/193437319-16225b17-43ad-47d7-8526-c8c8f6f01ae5.png)
+
+#### Speed optimization: place upload centers close to users
+
+Triển khai các `upload centers` gần với người dùng. Ở đây ta có thể sử dụng CDN như `upload centers`
+
+VD: Người dùng ở Mỹ sẽ upload video lên `North American center`, ở Ấn độ, Trung Quốc sẽ upload lên `Asia center`, ...
+
+#### Speed optimization: parallelism everywhere
+
+Để tăng tốc bằng cách xử lí song song ta có thể tiến hành tạo thêm một system mới song song với system hiện có.
+
+Muốn triển khai xử lí song song thì thiết kế ban đầu cần phải được sửa đổi
+
+Hình dưới đây minh hoạ quá trình "vận chuyển" video từ `original storage` đến `CDN` (chú ý rằng output sẽ phụ thuộc vào input của bước trước) của thiết kế hiện nay
+
+![Screen Shot 2022-10-02 at 13 10 18](https://user-images.githubusercontent.com/15076665/193437470-b329cf2e-3b11-408a-8f01-35b104b298e6.png)
