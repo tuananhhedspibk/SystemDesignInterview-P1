@@ -147,3 +147,49 @@ Hình sau mô tả delta sync với chỉ "block 2" và "block 5" được thay 
 ![Screen Shot 2022-10-02 at 19 18 37](https://user-images.githubusercontent.com/15076665/193449221-b14e7ecc-dae2-4d94-8aa4-db33b449a35b.png)
 
 ### High consistency requirement
+
+Hệ thống cần đảm bảo tính thống nhất cao, sẽ không bao giờ có chuyện các clients khác nhau sẽ xem được cácc file với nội dung khác nhau ở cùng một thời điểm.
+
+Để đảm bảo tính thống nhất cao, hệ thống cần xem xét đến việc đảm bảo tính thống nhất cho:
+
+- Metadata cache
+- Database layer
+
+Với `Memory cache` thì các replicas khác nhau có thể có dữ liệu khác nhau. Để đảm bảo tính thống nhất thì chúng ta cần chắc chắn những điều sau:
+
+- Dữ liệu trong cache replicas và trong master phải đồng nhất
+- Không cho phép cache ghi lên DB để đảm bảo cache và DB có dữ liệu đồng nhất
+
+Do RDB có ACID (Atomicity, Consistency, Isolation, Durability) nên việc đảm bảo tính đồng nhất cao là không quá khó khăn như NoSQL (không hỗ trợ ACID nên cần phải tạo ACID bằng tay)
+
+### Metadata Database
+
+Hình dưới đây chỉ là minh hoạ đơn giản (bao gồm những bảng và những cột quan trọng nhất)
+
+![Screen Shot 2022-10-03 at 8 22 10](https://user-images.githubusercontent.com/15076665/193480881-e3313de1-76fb-47fc-bc76-6dfada9a0a1c.png)
+
+`Namespace`: root directory của user
+`File`: lưu các thông tin liên quan đến file
+`File_version`: các thông tin về version history của file. Các rows đều là read-only để đảm bảo tính trung thực của revison history
+`Block`: lưu các thông tin liên quan đến file block. Một file (ở bất kì version nào) cũng đều có thể được tái tạo lại bằng cách sắp xếp các blocks theo một thứ tự nhất định
+
+### Upload flow
+
+Sẽ diễn ra như hình bên dưới
+
+![Screen Shot 2022-10-03 at 8 28 35](https://user-images.githubusercontent.com/15076665/193481081-5090c502-9a1b-4d75-88cd-890b0fe6537d.png)
+
+2 requests sẽ được gửi song song. 1 request sẽ add file metadata, 1 request sẽ upload file lên cloud storage
+
+#### Add file metadata
+
+Notify service sẽ thông báo cho các clients liên quan (client 2) về file đang được upload
+
+#### Upload file to cloud storage
+
+File sẽ được upload lên `block server`, block server sẽ cắt nhỏ file thành các blocks, nén và mã hoá block, upload chúng lên cloud storage.
+
+Sau khi file được upload thì `cloud storage` sẽ trigger `callback call` đến API server để cập nhật `upload status` thành `uploaded` (trong metadata DB)
+
+Flow khi chỉnh sửa file cũng tương tự như trên
+
