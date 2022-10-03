@@ -206,7 +206,6 @@ Quá trình này được minh hoạ như hình bên dưới:
 
 ![Screen Shot 2022-10-03 at 23 28 04](https://user-images.githubusercontent.com/15076665/193602789-a46bdaed-40e5-4052-ad0f-0ce4ece7eb10.png)
 
-
 ### Notification service
 
 Để đảm bảo tính đồng nhất của dữ liệu, mọi sự thay đổi dưới local của file sẽ được thông báo cho các clients khác để giảm thiểu đi conflict.
@@ -233,4 +232,16 @@ Sau khi nhận được response là phiên bản mới nhất của file hoặc
 
 - `De-couple blocks` - ta sẽ tiến hành loại bỏ đi các blocks không cần thiết ở account level nhằm tiết kiệm bộ nhớ. Hai blocks được coi là giống nhau nếu chúng có `hash value` bằng nhau
 - Thực hiện các "chiến lược" backup thông minh:
-  - 
+  - Set limit: ta sẽ thiết lập giới hạn số lượng version lưu trữ, nếu đạt đến giới hạn thì version cũ nhất sẽ bị thay thế bởi version mới nhất
+  - Chỉ giữ lại những versions có giá trị, với những file thường xuyên được cập nhật, việc lưu toàn bộ các bản edit của nó không khác nào việc lưu 1000 versions của file. Để tránh việc lưu trữ không cần thiết, ta có thể đưa ra giới hạn cho số lượng saved version. Chúng ta sẽ cho version hiện tại có trọng số lớn hơn. Các thử nghiệm thực tế cũng giúp chúng ta tìm ra số lượng version tối ưu để lưu lại
+- Đưa các dữ liệu ít dùng sang `cold storage`. Các dữ liệu này thường sẽ không được truy cập cả tháng thậm chí cả năm. Amazon S3 glacier là một ví dụ (chi phí cho glacier rẻ hơn S3)
+
+### Failure handling
+
+Các hệ thống lớn thường hay xảy ra lỗi. Dưới đây là một số lỗi sẽ được interviewer chú ý:
+
+- `Load balancer failure`: nếu một load balancer fail thì load balancer khác sẽ thay thế, các load balancers kiểm soát tình trạng của nhau thông qua `heartbeat signal`, tín hiệu này sẽ được gửi đều đặn theo từng khoảng thời gian từ một load balancer đến các load balancers còn lại. Nếu các load balancers không nhận được heartbeat signal từ một load balancer thì có nghĩa là load balancer này đã bị failed
+- `Block server failure`: nếu một block server fail thì các servers còn lại sẽ xử lí các jobs chưa hoàn thiện
+- `Cloud storage failure`: S3 buckets được replicate nhiều lần ở các regions khác nhau, nếu tại một region files không tồn tại thì chúng có thể được kéo về từ region khác
+- `API server failure`: API server là stateless do đó nếu một server bị fail thì traffic sẽ được redirect sang server khác bởi load balancer
+- `Metadata cache failure`
