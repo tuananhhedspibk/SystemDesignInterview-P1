@@ -193,3 +193,44 @@ Sau khi file được upload thì `cloud storage` sẽ trigger `callback call` �
 
 Flow khi chỉnh sửa file cũng tương tự như trên
 
+### Download flow
+
+Download file sẽ được trigger khi file có sự chỉnh sửa hoặc có file được thêm mới. Có 2 cách sau để client biết rằng có file được chỉnh sửa / thêm mới để từ đó tiến hành download file:
+
+- Nếu client A online thì notification service sẽ push notification đến client A để thông báo rằng có sự thay đổi/ thêm mới file nên client A cần pull version mới nhất về
+- Nếu client A offline thì dữ liệu sẽ được đưa vào cache, khi client online trở lại nó sẽ pull version mới nhất về
+
+Khi nhận được thông báo có sự thay đổi, client sẽ call API server để lấy về `Metadata` sau đó gửi request lên block server để lấy về các blocks cần thiết cho quá trình "tái cấu trúc" file với version mới nhất
+
+Quá trình này được minh hoạ như hình bên dưới:
+
+![Screen Shot 2022-10-03 at 23 28 04](https://user-images.githubusercontent.com/15076665/193602789-a46bdaed-40e5-4052-ad0f-0ce4ece7eb10.png)
+
+
+### Notification service
+
+Để đảm bảo tính đồng nhất của dữ liệu, mọi sự thay đổi dưới local của file sẽ được thông báo cho các clients khác để giảm thiểu đi conflict.
+
+Notification service được tạo ra nhằm thực hiện mục tiêu trên.
+
+Ở high-level notification service có thể chuyển dữ liệu tới client dưới hình thức `event`. Dưới đây là một vài cách thức:
+
+- Long polling (Dropbox sử dụng phương thức này)
+- Websocket
+
+2 phương thức trên đều hoạt động ổn, nhưng lựa chọn `long polling` sẽ hợp lí hơn với 2 lí do sau đây:
+
+- Tương tác giữa `client` và `Notification service` không phải là `bi-directional` cụ thể là client sẽ `pull` notification data về chứ không có chiều ngược lại
+- Websocket sẽ phù hợp hơn cho những chat app (cần bidirectional communication). Google drive cũng không gửi quá nhiều notify với một lượng lớn dữ liệu bên trong
+
+Với long polling, client sẽ "chủ động" tạo `long polling connection` tới notification service. Khi phát hiện có file bị thay đổi thì connect sẽ **BỊ ĐÓNG LẠI**. **BỊ ĐÓNG LẠI** ở đây là để tạo connect tới `API server` nhằm mục đích `pull` phiên bản mới nhất của file về.
+
+Sau khi nhận được response là phiên bản mới nhất của file hoặc `connect bị timeout` thì client sẽ ngay lập tức "mở" một `long polling connect` tới notification service
+
+### Save storage space
+
+Để đăng "tính tin cậy" thì một file sẽ được lưu trên nhiều data centers. Ta thấy rằng bộ nhớ ở các data centers sẽ "đầy" rất nhanh khi phải lưu **quá nhiều versions** của **quá nhiều files**. Sau đây là các phương pháp giúp tiết kiệm bộ nhớ lưu trữ (tiết kiệm cả chi phí):
+
+- `De-couple blocks` - ta sẽ tiến hành loại bỏ đi các blocks không cần thiết ở account level nhằm tiết kiệm bộ nhớ. Hai blocks được coi là giống nhau nếu chúng có `hash value` bằng nhau
+- Thực hiện các "chiến lược" backup thông minh:
+  - 
