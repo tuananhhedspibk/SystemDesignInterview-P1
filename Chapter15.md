@@ -244,4 +244,16 @@ Các hệ thống lớn thường hay xảy ra lỗi. Dưới đây là một s�
 - `Block server failure`: nếu một block server fail thì các servers còn lại sẽ xử lí các jobs chưa hoàn thiện
 - `Cloud storage failure`: S3 buckets được replicate nhiều lần ở các regions khác nhau, nếu tại một region files không tồn tại thì chúng có thể được kéo về từ region khác
 - `API server failure`: API server là stateless do đó nếu một server bị fail thì traffic sẽ được redirect sang server khác bởi load balancer
-- `Metadata cache failure`
+- `Metadata cache failure`: cache server được replicated nhiều lần, nếu có một node failed thì các nodes khác sẽ thay thế. Hơn thế nữa nếu 1 server không có khả năng hồi phục, ta hoàn toàn có khả năng thay thế nó bằng một server khác
+- `Metadata DB failure`:
+  - Master down: ta có thể chọn ra một slave khác làm master tạm thời.
+  - Slave down: ta có thể chọn ra slave khác dùng cho read operation và thay thế slave down
+- `Notification service failure`: nếu một notify server down thì các `long polling connections` sẽ bị mất và clients sẽ phải reconnect tới server khác. Số lượng connect tới 1 server khá lớn (với Dropbox vào 2012 là 1 triệu) nên nếu toàn bộ connection của các lost clients này đều hường tới một server thì hoặc là server này sẽ lại "sập" hoặc quá trình "reconnect" sẽ chậm
+- `Offline backup queue failure`: queue được replicates nhiều lần nên nếu một queue bị fail thì các consumer của nó sẽ phải `re-subscribe` tới một queue khác
+
+## Bước 4: Tổng quát
+
+Có một cách tiếp cận khác cho `upload flow` đó là upload file trực tiếp lên `Cloud storage`, cách làm này có ưu điểm là nhanh vì không phải upload file thông qua `block server` tuy nhiên nó cũng có những nhược điểm như sau:
+
+- Các logic như chunking, encryption, ... sẽ phải implement phía dưới client (với nhiều platform khác nhau như `ios`, `android`, `web`) do đó sẽ tốn nhiều chi phí engineering hơn là việc chỉ triển khai ở `một block server duy nhất`
+- Ngoài ra nếu logic encryption ở phía client bị hacked thì hậu quả sẽ khó lường
