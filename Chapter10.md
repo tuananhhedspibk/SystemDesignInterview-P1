@@ -36,7 +36,9 @@ Ta cần xem xét những cấu trúc sau:
 Để thực hiện push notification cho các iOS devices ta cần 3 thành phần như sau:
 
 - Provider: build và gửi notification req đến Apple Push Notification Service (APNs), provider cần cung cấp các thông tin như sau:
+
 ① Device token: unique identifier sử dụng để push notification
+
 ② Payload: JSON data bao gồm thông tin về notification payload, ví dụ như sau:
 
 ```JSON
